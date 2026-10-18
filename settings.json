@@ -1,5 +1,5 @@
 {
-  "_help": "Edit this file on GitHub. Every TV running ClearFeed picks up changes within about five minutes (or on next launch).",
+  "_help": "Edited with ClearFeed Manager. Every TV running ClearFeed picks up changes within about ten minutes.",
   "categories": {
     "hateful": true,
     "materialism": true,
@@ -8,7 +8,10 @@
   },
   "extraWords": {
     "hateful": [],
-    "materialism": [],
+    "materialism": [
+      "war",
+      "asianet"
+    ],
     "degrading": [],
     "religious": []
   },
@@ -28,13 +31,5 @@
   "trustedCreators": [],
   "hideShorts": true,
   "showToasts": true,
-  "refreshMinutes": 10,
-  "blockedSites": [
-    "tiktok.com"
-  ],
-  "google": {
-    "filterResults": true,
-    "blockSearches": true,
-    "safeSearch": true
-  }
+  "refreshMinutes": 10
 }
