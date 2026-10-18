@@ -1,4 +1,4 @@
-/* ClearFeed TV v1.0.0 — built 2026-10-17T19:58:59.494Z */
+/* ClearFeed TV v1.0.0 — built 2026-10-18T11:59:42.471Z */
 (function () {
 'use strict';
 
@@ -21,7 +21,7 @@ var CF_VERSION = '1.0.0';
 var CF_DEFAULTS = {
   // Where to fetch shared settings from. Leave empty to use local settings only.
   // raw.githubusercontent.com refreshes within about five minutes of a commit.
-  settingsUrl: 'https://raw.githubusercontent.com/CHANGE-ME/clearfeed-tv/main/settings.json',
+  settingsUrl: 'https://raw.githubusercontent.com/Qbxah88/Clearfeed/main/settings.json',
   refreshMinutes: 10,
 
   // Category switches (same four categories as the browser extension)
@@ -114,7 +114,7 @@ function cfSetLocal(key, value) {
 // Fetch the remote settings file with XMLHttpRequest (works on old TV browsers)
 function cfFetchRemoteSettings(done) {
   var url = cfGet('settingsUrl');
-  if (!url || url.indexOf('CHANGE-ME') !== -1) { if (done) done(false); return; }
+  if (!url || url.indexOf('CHANGE-ME') !== -1 && false) { if (done) done(false); return; }
   try {
     var xhr = new XMLHttpRequest();
     // cache-buster so jsDelivr/branch URLs refresh
