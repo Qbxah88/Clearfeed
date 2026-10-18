@@ -96,7 +96,7 @@ a { color: var(--accent); }
 <div class="wrap">
   <header>
     <h1>ClearFeed Manager</h1>
-    <p class="sub">Edits here go to <code>settings.json</code> in Qbxah88/Clearfeed. The TV picks them up within about 10 minutes, or the next time ClearFeed is launched.</p>
+    <p class="sub">One settings file for every device. Edits go to <code>settings.json</code> in Qbxah88/Clearfeed; the TV and every computer running ClearFeed Web pick them up within about 10 minutes, or on next launch.</p>
   </header>
 
   <section class="panel" id="setup">
@@ -119,7 +119,7 @@ a { color: var(--accent); }
 
   <section class="panel">
     <h2>Searches</h2>
-    <p>A search containing any of these words or phrases is refused on the TV.</p>
+    <p>A search containing any of these words or phrases is refused, on the TV and on Google.</p>
     <div class="chips" id="chips-blockedSearches"></div>
     <div class="adder"><input type="text" id="add-blockedSearches" placeholder="e.g. prank"><button class="small" data-add="blockedSearches">Add</button></div>
     <div class="toggles">
@@ -146,6 +146,49 @@ a { color: var(--accent); }
   </section>
 
   <section class="panel">
+    <h2>Blocked sites</h2>
+    <p>Computers with ClearFeed Web installed. A domain blocks the whole site including subdomains; add a path to block just part of it, e.g. <code>reddit.com/r/something</code>. Google results linking to these sites are hidden too.</p>
+    <div class="chips" id="chips-blockedSites"></div>
+    <div class="adder"><input type="text" id="add-blockedSites" placeholder="tiktok.com"><button class="small" data-add="blockedSites">Add</button></div>
+  </section>
+
+  <section class="panel">
+    <h2>Google</h2>
+    <p>Computers with ClearFeed Web installed.</p>
+    <div class="toggles">
+      <label class="switch"><span class="t">Hide results matching the word filters<small>Also hides autocomplete suggestions</small></span><input type="checkbox" id="g-filterResults"></label>
+      <label class="switch"><span class="t">Refuse blocked searches<small>Uses the Searches list above</small></span><input type="checkbox" id="g-blockSearches"></label>
+      <label class="switch"><span class="t">Force SafeSearch on<small>Can't be switched off from Google's settings</small></span><input type="checkbox" id="g-safeSearch"></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Reels and Shorts</h2>
+    <p>Computers with ClearFeed installed. Each reel in the full-screen viewer is checked before it plays; the timer counts time actually spent watching.</p>
+    <div class="toggles">
+      <label class="switch"><span class="t">Check each reel before it plays<small>Blocklist and word filters always; pictures too when the AI check is on</small></span><input type="checkbox" id="r-check"></label>
+      <label class="switch"><span class="t">Show the timer badge while watching</span><input type="checkbox" id="r-badge"></label>
+      <label class="switch"><span class="t">Daily limit<small>minutes of reels and Shorts per day; 0 = no limit</small></span><input type="number" id="r-dailyMinutes" min="0" max="600" style="width:90px"></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Spending pause</h2>
+    <p>Computers with ClearFeed Web installed. Before a Pay, Place order or Book now button works, a pause screen asks what it's for, whether you already have it, whether it can wait, and how you're paying. Waiting saves the page to a list with a reminder; going ahead needs a reason and a short countdown. An evening summary says what you kept.</p>
+    <div class="toggles">
+      <label class="switch"><span class="t">Spending pause on</span><input type="checkbox" id="s-enabled"></label>
+      <label class="switch"><span class="t">Countdown before Pay unlocks<small>seconds</small></span><input type="number" id="s-countdownSec" min="5" max="600" style="width:90px"></label>
+      <label class="switch"><span class="t">Reminder after<small>hours on the waiting list</small></span><input type="number" id="s-waitHours" min="1" max="168" style="width:90px"></label>
+      <label class="switch"><span class="t">Evening summary at<small>24-hour clock, e.g. 21:00</small></span><input type="text" id="s-summaryTime" style="width:90px"></label>
+      <label class="switch"><span class="t">Currency symbol</span><input type="text" id="s-currency" style="width:60px"></label>
+      <label class="switch"><span class="t">Monthly rent<small>used for "that's X% of your rent"</small></span><input type="number" id="s-rent" min="0" style="width:110px"></label>
+    </div>
+    <div class="lbl">Savings goals (name: amount)</div>
+    <div class="chips" id="chips-goals"></div>
+    <div class="adder"><input type="text" id="add-goals" placeholder="Holiday: 800"><button class="small" data-add="goals">Add</button></div>
+  </section>
+
+  <section class="panel">
     <h2>Word filters</h2>
     <p>Built-in word lists judge titles and channel names. Switch categories on or off, add your own words, and protect phrases that over-block.</p>
     <div class="toggles">
@@ -153,6 +196,7 @@ a { color: var(--accent); }
       <label class="switch"><span class="t">Materialism<small>hauls, luxury, get-rich, sponsored</small></span><input type="checkbox" id="cat-materialism"></label>
       <label class="switch"><span class="t">Degrading<small>humiliation, exposed, cringe</small></span><input type="checkbox" id="cat-degrading"></label>
       <label class="switch"><span class="t">Religious<small>sermons, prophecy, astrology</small></span><input type="checkbox" id="cat-religious"></label>
+      <label class="switch"><span class="t">Low mood<small>hopelessness, doom and outrage, perfect-life comparison, shame-style motivation, drama, horror, health scares</small></span><input type="checkbox" id="cat-lowMood"></label>
     </div>
     <div class="lbl">Extra words (any category)</div>
     <div class="chips" id="chips-extraWords"></div>
@@ -184,8 +228,12 @@ a { color: var(--accent); }
 (function () {
   var OWNER = 'Qbxah88', REPO = 'Clearfeed', PATH = 'settings.json';
   var API = 'https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + PATH;
-  var LISTS = ['blockedSearches', 'blockedCreators', 'trustedCreators', 'blockedVideos', 'disabledWords', 'alwaysAllow'];
-  var CATS = ['hateful', 'materialism', 'degrading', 'religious'];
+  var LISTS = ['blockedSearches', 'blockedCreators', 'trustedCreators', 'blockedVideos', 'blockedSites', 'disabledWords', 'alwaysAllow'];
+  var GOOGLE = ['filterResults', 'blockSearches', 'safeSearch'];
+  var REELS = ['check', 'badge'];
+  var SPEND_NUM = ['countdownSec', 'waitHours', 'rent'];
+  var SPEND_TXT = ['summaryTime', 'currency'];
+  var CATS = ['hateful', 'materialism', 'degrading', 'religious', 'lowMood'];
   var settings = null, sha = null, dirty = false;
 
   var $ = function (id) { return document.getElementById(id); };
@@ -211,6 +259,10 @@ a { color: var(--accent); }
     if (typeof s.hideShorts !== 'boolean') s.hideShorts = true;
     if (typeof s.showToasts !== 'boolean') s.showToasts = true;
     if (!s.refreshMinutes) s.refreshMinutes = 10;
+    s.google = s.google || {}; GOOGLE.forEach(function (k) { if (typeof s.google[k] !== 'boolean') s.google[k] = true; });
+    s.spending = s.spending || {}; if (typeof s.spending.enabled !== 'boolean') s.spending.enabled = true;
+    if (!s.spending.countdownSec) s.spending.countdownSec = 20; if (!s.spending.waitHours) s.spending.waitHours = 24; if (!s.spending.summaryTime) s.spending.summaryTime = '21:00'; if (!s.spending.currency) s.spending.currency = '£'; if (typeof s.spending.rent !== 'number') s.spending.rent = 0; if (!Array.isArray(s.spending.goals)) s.spending.goals = [];
+    s.reels = s.reels || {}; REELS.forEach(function (k) { if (typeof s.reels[k] !== 'boolean') s.reels[k] = true; }); if (typeof s.reels.dailyMinutes !== 'number') s.reels.dailyMinutes = 0;
     return s;
   }
 
@@ -220,9 +272,18 @@ a { color: var(--accent); }
   function extraRemove(w) { CATS.forEach(function (c) { settings.extraWords[c] = settings.extraWords[c].filter(function (x) { return x !== w; }); }); }
   function extraAdd(w) { if (extraFlat().indexOf(w) === -1) settings.extraWords.materialism.push(w); }
 
-  function listGet(k) { return k === 'extraWords' ? extraFlat() : settings[k]; }
-  function listAdd(k, v) { if (k === 'extraWords') extraAdd(v); else if (settings[k].indexOf(v) === -1) settings[k].push(v); }
-  function listRemove(k, v) { if (k === 'extraWords') extraRemove(v); else settings[k] = settings[k].filter(function (x) { return x !== v; }); }
+  function goalsFlat() { return settings.spending.goals.map(function (g) { return g.name + ': ' + g.amount; }); }
+  function listGet(k) { return k === 'extraWords' ? extraFlat() : k === 'goals' ? goalsFlat() : settings[k]; }
+  function listAdd(k, v) {
+    if (k === 'extraWords') return extraAdd(v);
+    if (k === 'goals') { var m = /^(.*?)[:\s]+([\d.,]+)\s*$/.exec(v); if (!m) return; settings.spending.goals.push({ name: m[1].trim(), amount: Number(m[2].replace(/,/g, '')) || 0 }); return; }
+    if (settings[k].indexOf(v) === -1) settings[k].push(v);
+  }
+  function listRemove(k, v) {
+    if (k === 'extraWords') return extraRemove(v);
+    if (k === 'goals') { settings.spending.goals = settings.spending.goals.filter(function (g) { return (g.name + ': ' + g.amount) !== v; }); return; }
+    settings[k] = settings[k].filter(function (x) { return x !== v; });
+  }
 
   function renderList(k) {
     var box = $('chips-' + k); box.innerHTML = '';
@@ -237,12 +298,18 @@ a { color: var(--accent); }
     });
   }
   function render() {
-    LISTS.concat(['extraWords']).forEach(renderList);
+    LISTS.concat(['extraWords', 'goals']).forEach(renderList);
+    $('s-enabled').checked = !!settings.spending.enabled;
+    SPEND_NUM.forEach(function (k) { $('s-' + k).value = settings.spending[k]; });
+    SPEND_TXT.forEach(function (k) { $('s-' + k).value = settings.spending[k]; });
     CATS.forEach(function (c) { $('cat-' + c).checked = !!settings.categories[c]; });
     $('blockAllSearches').checked = !!settings.blockAllSearches;
     $('hideShorts').checked = !!settings.hideShorts;
     $('showToasts').checked = !!settings.showToasts;
     $('refreshMinutes').value = settings.refreshMinutes;
+    GOOGLE.forEach(function (k) { $('g-' + k).checked = !!settings.google[k]; });
+    REELS.forEach(function (k) { $('r-' + k).checked = !!settings.reels[k]; });
+    $('r-dailyMinutes').value = settings.reels.dailyMinutes;
   }
 
   function load() {
@@ -268,6 +335,7 @@ a { color: var(--accent); }
     out.blockedSearches = settings.blockedSearches; out.blockAllSearches = settings.blockAllSearches;
     out.trustedCreators = settings.trustedCreators; out.hideShorts = settings.hideShorts;
     out.showToasts = settings.showToasts; out.refreshMinutes = Number(settings.refreshMinutes) || 10;
+    out.blockedSites = settings.blockedSites; out.google = settings.google; out.reels = settings.reels; out.spending = settings.spending;
     var body = { message: 'Update ClearFeed settings', content: b64enc(JSON.stringify(out, null, 2) + '\n'), branch: 'main' };
     if (sha) body.sha = sha;
     $('save').disabled = true; setStatus('Saving…');
@@ -286,6 +354,12 @@ a { color: var(--accent); }
   });
   CATS.forEach(function (c) { $('cat-' + c).addEventListener('change', function (e) { settings.categories[c] = e.target.checked; markDirty(); }); });
   ['blockAllSearches', 'hideShorts', 'showToasts'].forEach(function (k) { $(k).addEventListener('change', function (e) { settings[k] = e.target.checked; markDirty(); }); });
+  $('s-enabled').addEventListener('change', function (e) { settings.spending.enabled = e.target.checked; markDirty(); });
+  SPEND_NUM.forEach(function (k) { $('s-' + k).addEventListener('change', function (e) { settings.spending[k] = Math.max(0, Number(e.target.value) || 0); markDirty(); }); });
+  SPEND_TXT.forEach(function (k) { $('s-' + k).addEventListener('change', function (e) { settings.spending[k] = e.target.value.trim(); markDirty(); }); });
+  REELS.forEach(function (k) { $('r-' + k).addEventListener('change', function (e) { settings.reels[k] = e.target.checked; markDirty(); }); });
+  $('r-dailyMinutes').addEventListener('change', function (e) { settings.reels.dailyMinutes = Math.max(0, Number(e.target.value) || 0); markDirty(); });
+  GOOGLE.forEach(function (k) { $('g-' + k).addEventListener('change', function (e) { settings.google[k] = e.target.checked; markDirty(); }); });
   $('refreshMinutes').addEventListener('change', function (e) { settings.refreshMinutes = Math.max(1, Number(e.target.value) || 10); markDirty(); });
   $('save').addEventListener('click', save);
   $('reload').addEventListener('click', load);

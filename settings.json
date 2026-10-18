@@ -1,20 +1,18 @@
 {
-  "_help": "Edited with ClearFeed Manager. Every TV running ClearFeed picks up changes within about ten minutes.",
+  "_help": "Edit this file on GitHub. Every TV running ClearFeed picks up changes within about five minutes (or on next launch).",
   "categories": {
     "hateful": true,
     "materialism": true,
     "degrading": true,
-    "religious": true
+    "religious": true,
+    "lowMood": true
   },
   "extraWords": {
     "hateful": [],
-    "materialism": [
-      "war",
-      "asianet",
-      "Asianet Amma"
-    ],
+    "materialism": [],
     "degrading": [],
-    "religious": []
+    "religious": [],
+    "lowMood": []
   },
   "disabledWords": [],
   "alwaysAllow": [],
@@ -26,17 +24,33 @@
   ],
   "blockedSearches": [
     "prank",
-    "roblox",
-    "asianet amma serial cast",
-    "asianet amma",
-    "Islamophobia",
-    "Ziosim",
-    "racism",
-    "War"
+    "roblox"
   ],
   "blockAllSearches": false,
   "trustedCreators": [],
   "hideShorts": true,
   "showToasts": true,
-  "refreshMinutes": 10
+  "refreshMinutes": 10,
+  "blockedSites": [
+    "tiktok.com"
+  ],
+  "google": {
+    "filterResults": true,
+    "blockSearches": true,
+    "safeSearch": true
+  },
+  "reels": {
+    "check": true,
+    "badge": true,
+    "dailyMinutes": 0
+  },
+  "spending": {
+    "enabled": true,
+    "countdownSec": 20,
+    "waitHours": 24,
+    "summaryTime": "21:00",
+    "currency": "\u00a3",
+    "rent": 0,
+    "goals": []
+  }
 }
