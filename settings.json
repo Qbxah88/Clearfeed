@@ -1,0 +1,25 @@
+{
+  "_help": "Edit this file on GitHub. Every TV running ClearFeed picks up changes within about five minutes (or on next launch).",
+
+  "categories": { "hateful": true, "materialism": true, "degrading": true, "religious": true },
+  "extraWords": { "hateful": [], "materialism": [], "degrading": [], "religious": [] },
+  "disabledWords": [],
+  "alwaysAllow": [],
+
+  "blockedCreators": [
+    "https://www.youtube.com/@example-channel"
+  ],
+  "blockedVideos": [
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+  ],
+  "blockedSearches": [
+    "prank",
+    "roblox"
+  ],
+  "blockAllSearches": false,
+  "trustedCreators": [],
+
+  "hideShorts": true,
+  "showToasts": true,
+  "refreshMinutes": 10
+}
