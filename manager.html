@@ -182,6 +182,8 @@ a { color: var(--accent); }
       <label class="switch"><span class="t">Evening summary at<small>24-hour clock, e.g. 21:00</small></span><input type="text" id="s-summaryTime" style="width:90px"></label>
       <label class="switch"><span class="t">Currency symbol</span><input type="text" id="s-currency" style="width:60px"></label>
       <label class="switch"><span class="t">Monthly rent<small>used for "that's X% of your rent"</small></span><input type="number" id="s-rent" min="0" style="width:110px"></label>
+      <label class="switch"><span class="t">AI second opinion<small>rating, complaints, cheaper elsewhere, newer model; needs the API key in ClearFeed Web settings</small></span><input type="checkbox" id="s-aiAdvice"></label>
+      <label class="switch"><span class="t">Let it look things up on the web<small>about 1p per lookup, up to 3 per check</small></span><input type="checkbox" id="s-aiWebSearch"></label>
     </div>
     <div class="lbl">Savings goals (name: amount)</div>
     <div class="chips" id="chips-goals"></div>
@@ -260,7 +262,7 @@ a { color: var(--accent); }
     if (typeof s.showToasts !== 'boolean') s.showToasts = true;
     if (!s.refreshMinutes) s.refreshMinutes = 10;
     s.google = s.google || {}; GOOGLE.forEach(function (k) { if (typeof s.google[k] !== 'boolean') s.google[k] = true; });
-    s.spending = s.spending || {}; if (typeof s.spending.enabled !== 'boolean') s.spending.enabled = true;
+    s.spending = s.spending || {}; if (typeof s.spending.enabled !== 'boolean') s.spending.enabled = true; if (typeof s.spending.aiAdvice !== 'boolean') s.spending.aiAdvice = true; if (typeof s.spending.aiWebSearch !== 'boolean') s.spending.aiWebSearch = true;
     if (!s.spending.countdownSec) s.spending.countdownSec = 20; if (!s.spending.waitHours) s.spending.waitHours = 24; if (!s.spending.summaryTime) s.spending.summaryTime = '21:00'; if (!s.spending.currency) s.spending.currency = '£'; if (typeof s.spending.rent !== 'number') s.spending.rent = 0; if (!Array.isArray(s.spending.goals)) s.spending.goals = [];
     s.reels = s.reels || {}; REELS.forEach(function (k) { if (typeof s.reels[k] !== 'boolean') s.reels[k] = true; }); if (typeof s.reels.dailyMinutes !== 'number') s.reels.dailyMinutes = 0;
     return s;
@@ -299,7 +301,7 @@ a { color: var(--accent); }
   }
   function render() {
     LISTS.concat(['extraWords', 'goals']).forEach(renderList);
-    $('s-enabled').checked = !!settings.spending.enabled;
+    $('s-enabled').checked = !!settings.spending.enabled; $('s-aiAdvice').checked = !!settings.spending.aiAdvice; $('s-aiWebSearch').checked = !!settings.spending.aiWebSearch;
     SPEND_NUM.forEach(function (k) { $('s-' + k).value = settings.spending[k]; });
     SPEND_TXT.forEach(function (k) { $('s-' + k).value = settings.spending[k]; });
     CATS.forEach(function (c) { $('cat-' + c).checked = !!settings.categories[c]; });
@@ -355,6 +357,8 @@ a { color: var(--accent); }
   CATS.forEach(function (c) { $('cat-' + c).addEventListener('change', function (e) { settings.categories[c] = e.target.checked; markDirty(); }); });
   ['blockAllSearches', 'hideShorts', 'showToasts'].forEach(function (k) { $(k).addEventListener('change', function (e) { settings[k] = e.target.checked; markDirty(); }); });
   $('s-enabled').addEventListener('change', function (e) { settings.spending.enabled = e.target.checked; markDirty(); });
+  $('s-aiAdvice').addEventListener('change', function (e) { settings.spending.aiAdvice = e.target.checked; markDirty(); });
+  $('s-aiWebSearch').addEventListener('change', function (e) { settings.spending.aiWebSearch = e.target.checked; markDirty(); });
   SPEND_NUM.forEach(function (k) { $('s-' + k).addEventListener('change', function (e) { settings.spending[k] = Math.max(0, Number(e.target.value) || 0); markDirty(); }); });
   SPEND_TXT.forEach(function (k) { $('s-' + k).addEventListener('change', function (e) { settings.spending[k] = e.target.value.trim(); markDirty(); }); });
   REELS.forEach(function (k) { $('r-' + k).addEventListener('change', function (e) { settings.reels[k] = e.target.checked; markDirty(); }); });

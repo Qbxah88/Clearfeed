@@ -1,5 +1,5 @@
 {
-  "_help": "Edited with ClearFeed Manager. Every TV running ClearFeed picks up changes within about ten minutes.",
+  "_help": "Edit this file on GitHub. Every TV running ClearFeed picks up changes within about five minutes (or on next launch).",
   "categories": {
     "hateful": true,
     "materialism": true,
@@ -49,13 +49,10 @@
     "countdownSec": 20,
     "waitHours": 24,
     "summaryTime": "21:00",
-    "currency": "£",
-    "rent": 2550,
-    "goals": [
-      {
-        "name": "ILR",
-        "amount": 4500
-      }
-    ]
+    "currency": "\u00a3",
+    "rent": 0,
+    "goals": [],
+    "aiAdvice": true,
+    "aiWebSearch": true
   }
 }
