@@ -1,4 +1,4 @@
-/* ClearFeed TV v1.0.0 — built 2026-10-18T11:59:42.471Z */
+/* ClearFeed TV v1.0.0 — built 2026-10-18T19:56:36.455Z */
 (function () {
 'use strict';
 
@@ -29,10 +29,11 @@ var CF_DEFAULTS = {
     hateful: true,
     materialism: true,
     degrading: true,
-    religious: true
+    religious: true,
+    lowMood: true
   },
   // Extra words per category, added to the built-in lists
-  extraWords: { hateful: [], materialism: [], degrading: [], religious: [] },
+  extraWords: { hateful: [], materialism: [], degrading: [], religious: [], lowMood: [] },
   // Words from the built-in lists you want switched off
   disabledWords: [],
   // Phrases that should never trigger a filter
@@ -176,6 +177,25 @@ var CF_BUILTIN_WORDS = {
     'repent', 'hellfire', 'sinner', 'blasphemy', 'jihad', 'crusade',
     'church service', 'evangelist', 'televangelist', 'miracle healing', 'prosperity gospel',
     'astrology', 'horoscope', 'tarot', 'psychic', 'manifestation'
+  ],
+  lowMood: [
+    // self-harm and hopelessness topics
+    'suicide', 'suicidal', 'self harm', 'self-harm', 'selfharm', 'kill myself', 'want to die', 'end it all', 'no reason to live',
+    'hopeless', 'nobody cares', "can't go on", 'unalive',
+    // doom and outrage
+    'catastrophe', 'apocalypse', 'doomsday', 'outrage', 'scandal', 'slammed', 'furious', 'massacre', 'shooting', 'stabbing',
+    'terror attack', 'recession', 'layoffs', "you won't believe", "what they don't want you to know",
+    // comparison and perfect-life content
+    'day in my life', 'glow up', 'transformation', 'my morning routine', 'dream house', 'body goals', 'before and after',
+    'weight loss', 'summer body', 'what i eat in a day', 'grindset', 'while you were sleeping',
+    // shame-style motivation
+    'no excuses', "you're wasting your life", 'stop being weak', 'sigma male', 'alpha male', "if you're not doing this",
+    // drama, rage-bait and cruelty
+    'called out', 'meltdown', 'public freakout', 'freakout', 'rage bait',
+    // dark, violent or disturbing
+    'horror', 'gore', 'graphic content', 'disturbing', 'true crime', 'serial killer', 'murder', 'torture', 'jump scare', 'haunted',
+    // health scares
+    'symptoms of', 'signs you have', 'deadly', "what's wrong with you"
   ]
 };
 
@@ -222,7 +242,7 @@ function cfCompileFilters() {
   var s = cfSettings;
   if (!s) return;
   var disabled = cfNormList(s.disabledWords);
-  var cats = ['hateful', 'materialism', 'degrading', 'religious'];
+  var cats = ['hateful', 'materialism', 'degrading', 'religious', 'lowMood'];
   cfCompiled.byCategory = {};
   for (var c = 0; c < cats.length; c++) {
     var cat = cats[c];
