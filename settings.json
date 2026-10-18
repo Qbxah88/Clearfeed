@@ -1,5 +1,5 @@
 {
-  "_help": "Edited with ClearFeed Manager. Every TV running ClearFeed picks up changes within about ten minutes.",
+  "_help": "Edit this file on GitHub. Every TV running ClearFeed picks up changes within about five minutes (or on next launch).",
   "categories": {
     "hateful": true,
     "materialism": true,
@@ -22,12 +22,19 @@
   ],
   "blockedSearches": [
     "prank",
-    "roblox",
-    "spiderman"
+    "roblox"
   ],
   "blockAllSearches": false,
   "trustedCreators": [],
   "hideShorts": true,
   "showToasts": true,
-  "refreshMinutes": 10
+  "refreshMinutes": 10,
+  "blockedSites": [
+    "tiktok.com"
+  ],
+  "google": {
+    "filterResults": true,
+    "blockSearches": true,
+    "safeSearch": true
+  }
 }
