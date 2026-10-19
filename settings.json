@@ -49,8 +49,8 @@
     "countdownSec": 20,
     "waitHours": 24,
     "summaryTime": "21:00",
-    "currency": "£4500",
-    "rent": 0,
+    "currency": "£",
+    "rent": 3000,
     "goals": [
       {
         "name": "holiday",
