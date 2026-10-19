@@ -55,9 +55,9 @@
     "aiAdvice": true,
     "aiWebSearch": true
   },
-  "hub": {
-    "url": "",
-    "deviceKey": "",
-    "tvName": "Samsung TV"
+    "hub": {
+    "url": "https://clearfeed-hub.awadh7us.workers.dev",
+    "deviceKey": "dev-LHDQPg4Ln2CSnTi8tfMH8PEwpI3Vtazj",
+    "tvName": "Lounge TV"
   }
 }
