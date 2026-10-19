@@ -1,5 +1,5 @@
 {
-  "_help": "Edited with ClearFeed Manager. Every TV running ClearFeed picks up changes within about ten minutes.",
+  "_help": "Edited with ClearFeed Manager. If hub.url and hub.deviceKey are set, every device reads its settings from the hub and sends its activity log there.",
   "categories": {
     "hateful": true,
     "materialism": true,
@@ -49,15 +49,15 @@
     "countdownSec": 20,
     "waitHours": 24,
     "summaryTime": "21:00",
-    "currency": "£",
-    "rent": 3000,
-    "goals": [
-      {
-        "name": "holiday",
-        "amount": 800
-      }
-    ],
+    "currency": "\u00a3",
+    "rent": 0,
+    "goals": [],
     "aiAdvice": true,
     "aiWebSearch": true
+  },
+  "hub": {
+    "url": "",
+    "deviceKey": "",
+    "tvName": "Samsung TV"
   }
 }

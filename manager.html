@@ -87,6 +87,22 @@ button:disabled { opacity: 0.5; cursor: default; }
 details summary { cursor: pointer; font-weight: 700; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
 a { color: var(--accent); }
+select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; }
+.devices { display: flex; flex-wrap: wrap; gap: 8px; }
+.devices .dev { font-size: 0.85rem; color: var(--muted); background: var(--chip); border-radius: 999px; padding: 4px 10px; }
+.devices .dev.on { color: var(--ok); }
+.loglist { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.entry { display: grid; grid-template-columns: 92px 1fr auto; gap: 6px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: start; }
+.entry .when { font-size: 0.8rem; color: var(--muted); line-height: 1.3; }
+.entry .when b { display: block; color: var(--fg); font-weight: 700; }
+.entry .what { min-width: 0; }
+.entry .what .text { overflow-wrap: anywhere; }
+.entry .what .meta { font-size: 0.82rem; color: var(--muted); }
+.entry .act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.entry .act button { font-size: 0.8rem; padding: 4px 8px; }
+.tag { display: inline-block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--chip); color: var(--muted); margin-right: 6px; }
+.tag.search { color: var(--danger); } .tag.spend { color: var(--accent); }
+@media (max-width: 560px) { .entry { grid-template-columns: 1fr; } .entry .act { justify-content: flex-start; } }
 @media (prefers-reduced-motion: no-preference) { .chip { transition: background 0.15s; } }
 </style>
 </head>
@@ -96,16 +112,21 @@ a { color: var(--accent); }
 <div class="wrap">
   <header>
     <h1>ClearFeed Manager</h1>
-    <p class="sub">One settings file for every device. Edits go to <code>settings.json</code> in Qbxah88/Clearfeed; the TV and every computer running ClearFeed Web pick them up within about 10 minutes, or on next launch.</p>
+    <p class="sub">One settings page for every device. The TV and every computer running ClearFeed pick up changes within about 10 minutes, or on next launch.</p>
   </header>
 
   <section class="panel" id="setup">
     <h2>Connection</h2>
-    <p>Reading needs nothing. Saving needs a GitHub token so this page can commit on your behalf. It's kept only in this browser.</p>
+    <p>With a hub, settings and the activity log live on your own Cloudflare worker. Without one, settings are read and saved in <code>settings.json</code> on GitHub (no log). Keys are kept only in this browser.</p>
     <div class="row">
-      <label class="field"><span class="lbl">GitHub token</span><input type="password" id="token" placeholder="github_pat_…" autocomplete="off"></label>
+      <label class="field"><span class="lbl">Hub address</span><input type="text" id="hubUrl" placeholder="https://clearfeed-hub.yourname.workers.dev" autocomplete="off"></label>
+      <label class="field"><span class="lbl">Admin key</span><input type="password" id="hubKey" placeholder="the ADMIN_KEY secret" autocomplete="off"></label>
+      <button id="saveHub" class="small">Remember hub</button>
+    </div>
+    <div class="row">
+      <label class="field"><span class="lbl">GitHub token (only without a hub)</span><input type="password" id="token" placeholder="github_pat_…" autocomplete="off"></label>
       <button id="saveToken" class="small">Remember token</button>
-      <button id="reload" class="small">Reload from GitHub</button>
+      <button id="reload" class="small">Reload</button>
     </div>
     <details>
       <summary>How to make a token (2 minutes)</summary>
@@ -115,6 +136,19 @@ a { color: var(--accent); }
       4. Permissions → Repository permissions → <strong>Contents: Read and write</strong>.<br>
       5. Generate, copy the token, paste it above, click <em>Remember token</em>.</p>
     </details>
+  </section>
+
+  <section class="panel" id="activity" hidden>
+    <h2>Activity</h2>
+    <p>What every device hid or refused, newest first. Only blocked things are sent here, never what was watched. Click a button to block more of it; then Save.</p>
+    <div class="row">
+      <label class="field" style="flex:0 1 240px"><span class="lbl">Device</span><select id="logDevice"><option value="">All devices</option></select></label>
+      <label class="field" style="flex:0 1 160px"><span class="lbl">Show</span><select id="logKind"><option value="">Everything</option><option value="search">Searches</option><option value="hidden">Hidden videos / posts</option><option value="creator">Blocked channels</option><option value="reel">Reels</option><option value="site">Sites</option><option value="spend">Spending pauses</option></select></label>
+      <button id="logRefresh" class="small">Refresh</button>
+      <button id="logClear" class="small">Clear log</button>
+    </div>
+    <div id="devices" class="devices"></div>
+    <div id="logList" class="loglist"><div class="empty">Nothing yet</div></div>
   </section>
 
   <section class="panel">
@@ -223,7 +257,7 @@ a { color: var(--accent); }
 
 <div class="savebar"><div class="in">
   <div class="status" id="status"><span class="dot" id="dot"></span>Loading settings…</div>
-  <button class="primary" id="save" disabled>Save to GitHub</button>
+  <button class="primary" id="save" disabled>Save</button>
 </div></div>
 
 <script>
@@ -314,8 +348,36 @@ a { color: var(--accent); }
     $('r-dailyMinutes').value = settings.reels.dailyMinutes;
   }
 
+  // ---------- hub ----------
+  function hubUrl() { return ($('hubUrl').value || '').trim().replace(/\/+$/, ''); }
+  function hubKey() { return ($('hubKey').value || '').trim(); }
+  function hubMode() { return !!hubUrl(); }
+  function hubFetch(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ 'x-cf-key': hubKey() }, opts.headers || {});
+    return fetch(hubUrl() + path, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) throw new Error(j.error || ('hub replied ' + r.status));
+        return j;
+      });
+    });
+  }
+
   function load() {
     setStatus('Loading settings…');
+    if (hubMode()) {
+      $('activity').hidden = false;
+      hubFetch('/settings')
+        .then(function (j) {
+          settings = ensureShape(j);
+          dirty = false; $('save').disabled = true; render();
+          setStatus('Loaded from the hub.' + (j._updatedAt ? ' Last saved ' + new Date(j._updatedAt).toLocaleString() + '.' : ' Nothing saved there yet; Save will send these.'));
+          loadLog();
+        })
+        .catch(function (e) { setStatus('Could not reach the hub: ' + e.message, 'err'); });
+      return;
+    }
+    $('activity').hidden = true;
     fetch(API + '?ref=main&t=' + Date.now(), { headers: headers() })
       .then(function (r) { if (!r.ok) throw new Error('GitHub replied ' + r.status); return r.json(); })
       .then(function (j) {
@@ -328,7 +390,7 @@ a { color: var(--accent); }
   }
 
   function save() {
-    if (!token()) { setStatus('Add a GitHub token first (see Connection).', 'err'); return; }
+    if (!hubMode() && !token()) { setStatus('Add a GitHub token first (see Connection).', 'err'); return; }
     var out = {};
     out._help = 'Edited with ClearFeed Manager. Every TV running ClearFeed picks up changes within about ten minutes.';
     out.categories = settings.categories; out.extraWords = settings.extraWords;
@@ -338,14 +400,93 @@ a { color: var(--accent); }
     out.trustedCreators = settings.trustedCreators; out.hideShorts = settings.hideShorts;
     out.showToasts = settings.showToasts; out.refreshMinutes = Number(settings.refreshMinutes) || 10;
     out.blockedSites = settings.blockedSites; out.google = settings.google; out.reels = settings.reels; out.spending = settings.spending;
+    $('save').disabled = true; setStatus('Saving…');
+    if (hubMode()) {
+      hubFetch('/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(out) })
+        .then(function () { dirty = false; setStatus('Saved to the hub. Devices will have it within about 10 minutes, or on next launch.', 'ok'); })
+        .catch(function (e) { $('save').disabled = false; setStatus('Save failed: ' + e.message, 'err'); });
+      return;
+    }
     var body = { message: 'Update ClearFeed settings', content: b64enc(JSON.stringify(out, null, 2) + '\n'), branch: 'main' };
     if (sha) body.sha = sha;
-    $('save').disabled = true; setStatus('Saving…');
     fetch(API, { method: 'PUT', headers: Object.assign(headers(), { 'Content-Type': 'application/json' }), body: JSON.stringify(body) })
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.message || ('GitHub replied ' + r.status)); return j; }); })
       .then(function (j) { sha = j.content.sha; dirty = false; setStatus('Saved. The TV will have it within about 10 minutes, or on next launch.', 'ok'); })
       .catch(function (e) { $('save').disabled = false; setStatus('Save failed: ' + e.message, 'err'); });
   }
+
+  // ---------- activity log ----------
+  var logEntries = [], logDevices = [];
+  function fmtWhen(t) {
+    var d = new Date(t), now = new Date();
+    var day = d.toDateString() === now.toDateString() ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    return '<b>' + day + '</b>' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  function kindOf(e) {
+    if (e.kind && e.kind !== 'hidden') return e.kind;
+    if (e.reason === 'search') return 'search';
+    if (e.reason === 'creator') return 'creator';
+    return 'hidden';
+  }
+  function domainOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (x) { return ''; } }
+  function loadLog() {
+    if (!hubMode()) return;
+    var dev = $('logDevice').value;
+    Promise.all([hubFetch('/devices'), hubFetch('/log?limit=300' + (dev ? '&device=' + encodeURIComponent(dev) : ''))])
+      .then(function (r) { logDevices = r[0]; logEntries = r[1].entries || []; renderDevices(); renderLog(); })
+      .catch(function (e) { $('logList').innerHTML = '<div class="empty">Could not load the log: ' + e.message + '</div>'; });
+  }
+  function renderDevices() {
+    var sel = $('logDevice'), cur = sel.value; sel.innerHTML = '<option value="">All devices</option>';
+    var box = $('devices'); box.innerHTML = '';
+    logDevices.forEach(function (d) {
+      var o = document.createElement('option'); o.value = d.name; o.textContent = d.name; sel.appendChild(o);
+      var el = document.createElement('span'); el.className = 'dev' + (Date.now() - d.lastSeen < 15 * 60000 ? ' on' : '');
+      el.textContent = d.name + ' · ' + (d.lastSeen ? 'seen ' + new Date(d.lastSeen).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : 'never') + ' · ' + d.entries;
+      box.appendChild(el);
+    });
+    sel.value = cur;
+    if (!logDevices.length) box.innerHTML = '<span class="dev">No device has reported yet</span>';
+  }
+  function renderLog() {
+    var kind = $('logKind').value;
+    var list = $('logList'); list.innerHTML = '';
+    var items = logEntries.filter(function (e) { return !kind || kindOf(e) === kind; });
+    if (!items.length) { list.innerHTML = '<div class="empty">Nothing yet</div>'; return; }
+    items.forEach(function (e) {
+      var k = kindOf(e);
+      var row = document.createElement('div'); row.className = 'entry';
+      var when = document.createElement('div'); when.className = 'when'; when.innerHTML = fmtWhen(e.t);
+      var what = document.createElement('div'); what.className = 'what';
+      var text = document.createElement('div'); text.className = 'text';
+      var tag = document.createElement('span'); tag.className = 'tag ' + k; tag.textContent = k;
+      text.appendChild(tag); text.appendChild(document.createTextNode(e.text || e.detail || ''));
+      var meta = document.createElement('div'); meta.className = 'meta';
+      meta.textContent = [e.device, e.site, e.reason && e.reason !== k ? e.reason : '', e.detail && e.detail !== e.text && k !== 'search' ? e.detail : '', e.creator].filter(Boolean).join(' · ');
+      what.appendChild(text); what.appendChild(meta);
+      var act = document.createElement('div'); act.className = 'act';
+      function btn(label, fn) { var b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.addEventListener('click', function () { fn(); b.textContent = 'Added'; b.disabled = true; }); act.appendChild(b); }
+      if (k === 'search') {
+        var q = (e.text || '').replace(/^Search:\s*/i, '').trim();
+        if (q) btn('Block "' + q.slice(0, 24) + '"', function () { listAdd('blockedSearches', q); renderList('blockedSearches'); markDirty(); });
+      }
+      if (e.creator) btn('Block channel', function () { listAdd('blockedCreators', e.creator); renderList('blockedCreators'); markDirty(); });
+      if (e.videoId) btn('Block video', function () { listAdd('blockedVideos', e.videoId); renderList('blockedVideos'); markDirty(); });
+      var dom = domainOf(e.url); if (dom && k !== 'search') btn('Block ' + dom, function () { listAdd('blockedSites', dom); renderList('blockedSites'); markDirty(); });
+      row.appendChild(when); row.appendChild(what); row.appendChild(act); list.appendChild(row);
+    });
+  }
+  $('logRefresh').addEventListener('click', loadLog);
+  $('logDevice').addEventListener('change', loadLog);
+  $('logKind').addEventListener('change', renderLog);
+  $('logClear').addEventListener('click', function () {
+    var dev = $('logDevice').value;
+    if (!confirm('Clear the log' + (dev ? ' for ' + dev : ' for every device') + '?')) return;
+    hubFetch('/log' + (dev ? '?device=' + encodeURIComponent(dev) : ''), { method: 'DELETE' }).then(loadLog).catch(function (e) { setStatus('Could not clear: ' + e.message, 'err'); });
+  });
+  $('saveHub').addEventListener('click', function () { lsSet('cf-hub-url', hubUrl()); lsSet('cf-hub-key', hubKey()); setStatus(hubUrl() ? 'Hub remembered in this browser.' : 'Hub cleared; using GitHub.'); load(); });
+  var savedHub = lsGet('cf-hub-url'); if (savedHub) $('hubUrl').value = savedHub;
+  var savedHubKey = lsGet('cf-hub-key'); if (savedHubKey) $('hubKey').value = savedHubKey;
 
   // wiring
   document.querySelectorAll('button[data-add]').forEach(function (b) {
