@@ -1,11 +1,11 @@
 {
   "name": "clearfeed-tv",
   "appName": "ClearFeed",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "ClearFeed for Samsung TV: hides videos, creators and searches you have blocked inside the YouTube app.",
   "packageType": "mods",
   "websiteURL": "https://youtube.com/tv",
-  "main": "userScript.js",
+  "main": "dist/userScript.js",
   "keys": ["ColorF3Blue"],
   "license": "MIT",
   "scripts": {

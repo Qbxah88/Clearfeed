@@ -1,4 +1,4 @@
-/* ClearFeed TV v1.0.0 — built 2026-10-19T07:58:02.664Z */
+/* ClearFeed TV v1.1.1 — built 2026-10-19T10:07:13.397Z */
 (function () {
 'use strict';
 
@@ -16,12 +16,14 @@
 
 var CF_STORAGE_KEY = 'clearfeed-tv';
 var CF_LOG_KEY = 'clearfeed-tv-log';
-var CF_VERSION = '1.1.0';
+var CF_VERSION = '1.1.1';
 
 var CF_DEFAULTS = {
   // Where to fetch shared settings from. Leave empty to use local settings only.
   // raw.githubusercontent.com refreshes within about five minutes of a commit.
   settingsUrl: 'https://raw.githubusercontent.com/Qbxah88/Clearfeed/main/settings.json',
+  // Same file through jsDelivr, used if GitHub can't be reached from the TV
+  settingsCdnUrl: 'https://cdn.jsdelivr.net/gh/Qbxah88/Clearfeed@main/settings.json',
   refreshMinutes: 10,
 
   // Category switches (same four categories as the browser extension)
@@ -149,21 +151,35 @@ function cfStoreRemote(remote) {
   cfRebuildSettings();
 }
 
+// Last HTTP status of each fetch, shown in the blue-button header for diagnosis
+var cfFetchStatus = { gh: '-', cdn: '-', hub: '-', post: '-' };
+
 // Fetch settings: first the GitHub file (which may only point at the hub),
-// then, if a hub is configured, the hub's settings on top of it.
+// falling back to the jsDelivr copy, then, if a hub is configured, the hub's
+// settings on top of it.
 function cfFetchRemoteSettings(done) {
   var url = cfGet('settingsUrl');
   if (!url) { if (done) done(false); return; }
-  cfXhrJson('GET', url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Math.floor(Date.now() / 60000), null, function (gh) {
-    if (!gh || typeof gh !== 'object') { if (done) done(false); return; }
+  var cdnUrl = cfGet('settingsCdnUrl');
+  function gotFile(gh) {
     var hub = gh.hub && gh.hub.url && gh.hub.deviceKey ? gh.hub : null;
     if (!hub) { cfStoreRemote(gh); if (done) done(true); return; }
     var hurl = String(hub.url).replace(/\/+$/, '');
-    cfXhrJson('GET', hurl + '/settings?k=' + encodeURIComponent(hub.deviceKey) + '&t=' + Date.now(), null, function (hs) {
+    cfXhrJson('GET', hurl + '/settings?k=' + encodeURIComponent(hub.deviceKey) + '&t=' + Date.now(), null, function (hs, st) {
+      cfFetchStatus.hub = st;
       var merged = cfDeepMerge(gh, hs && typeof hs === 'object' ? hs : {});
       merged.hub = gh.hub;
       cfStoreRemote(merged);
       if (done) done(true);
+    });
+  }
+  cfXhrJson('GET', url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Math.floor(Date.now() / 60000), null, function (gh, st) {
+    cfFetchStatus.gh = st;
+    if (gh && typeof gh === 'object') { gotFile(gh); return; }
+    if (!cdnUrl) { if (done) done(false); return; }
+    cfXhrJson('GET', cdnUrl, null, function (cg, st2) {
+      cfFetchStatus.cdn = st2;
+      if (cg && typeof cg === 'object') gotFile(cg); else if (done) done(false);
     });
   });
 }
@@ -202,6 +218,7 @@ function cfHubFlush(force) {
   var batch = cfHubQueue.splice(0, 200);
   cfHubLastSend = Date.now();
   cfXhrJson('POST', hub.url + '/log?k=' + encodeURIComponent(hub.key), { device: hub.name, entries: batch }, function (res, status) {
+    cfFetchStatus.post = status;
     if (!res && batch.length && cfHubQueue.length < 200) cfHubQueue = batch.concat(cfHubQueue); // retry next time
   });
 }
@@ -627,6 +644,7 @@ function cfStatusLine() {
   var hub = cfHub();
   if (hub) parts.push('hub: ' + (cfHubLastSend ? 'sent ' + Math.round((Date.now() - cfHubLastSend) / 60000) + ' min ago' : 'not sent yet'));
   else parts.push('no hub');
+  parts.push('http gh ' + cfFetchStatus.gh + ' / cdn ' + cfFetchStatus.cdn + ' / hub ' + cfFetchStatus.hub + ' / post ' + cfFetchStatus.post);
   return parts.join(' · ');
 }
 
