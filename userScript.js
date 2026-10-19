@@ -1,4 +1,4 @@
-/* ClearFeed TV v1.1.1 — built 2026-10-19T10:07:13.397Z */
+/* ClearFeed TV v1.1.2 — built 2026-10-19T10:21:52.965Z */
 (function () {
 'use strict';
 
@@ -16,7 +16,7 @@
 
 var CF_STORAGE_KEY = 'clearfeed-tv';
 var CF_LOG_KEY = 'clearfeed-tv-log';
-var CF_VERSION = '1.1.1';
+var CF_VERSION = '1.1.2';
 
 var CF_DEFAULTS = {
   // Where to fetch shared settings from. Leave empty to use local settings only.
@@ -118,23 +118,38 @@ function cfSetLocal(key, value) {
   cfRebuildSettings();
 }
 
-// Plain XMLHttpRequest JSON helper (works on old TV browsers). Uses text/plain
-// so cross-origin POSTs don't need a preflight.
+// JSON request helper for old TV browsers. Tries XMLHttpRequest first and,
+// if that fails before reaching the server (status 0), the fetch API, since
+// the YouTube app wraps one or the other on some firmware. Uses text/plain so
+// cross-origin POSTs don't need a preflight.
+var cfOrigXhr = window.XMLHttpRequest;
+var cfOrigFetch = window.fetch;
 function cfXhrJson(method, url, body, done) {
+  var finished = false;
+  function finish(data, status, how) { if (finished) return; finished = true; done(data, status, how); }
+  function viaFetch() {
+    if (typeof cfOrigFetch !== 'function') { finish(null, 0, 'xhr0'); return; }
+    try {
+      cfOrigFetch(url, { method: method, headers: body ? { 'Content-Type': 'text/plain' } : {}, body: body ? JSON.stringify(body) : undefined, mode: 'cors', credentials: 'omit' })
+        .then(function (r) { return r.text().then(function (t) { var d = null; try { d = cfOrigParse(t); } catch (e) { } finish(r.ok ? d : null, r.status, 'fetch'); }); })
+        .catch(function () { finish(null, 0, 'xhr0 fetch0'); });
+    } catch (e) { finish(null, 0, 'xhr0 fetchX'); }
+  }
   try {
-    var xhr = new XMLHttpRequest();
+    var xhr = new cfOrigXhr();
     xhr.open(method, url, true);
     if (body) xhr.setRequestHeader('Content-Type', 'text/plain');
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
+      if (xhr.status === 0) { viaFetch(); return; }
       var data = null;
       if (xhr.status >= 200 && xhr.status < 300) {
-        try { data = JSON.parse(xhr.responseText); } catch (e) { data = null; }
+        try { data = cfOrigParse(xhr.responseText); } catch (e) { data = null; }
       }
-      done(data, xhr.status);
+      finish(data, xhr.status, 'xhr');
     };
     xhr.send(body ? JSON.stringify(body) : null);
-  } catch (e) { done(null, 0); }
+  } catch (e) { viaFetch(); }
 }
 
 function cfHub() {
@@ -152,7 +167,17 @@ function cfStoreRemote(remote) {
 }
 
 // Last HTTP status of each fetch, shown in the blue-button header for diagnosis
-var cfFetchStatus = { gh: '-', cdn: '-', hub: '-', post: '-' };
+var cfFetchStatus = { gh: '-', cdn: '-', proxy: '-', same: '-', hub: '-', post: '-' };
+
+// TizenBrew's service proxies jsDelivr on the TV itself; a last resort for the
+// settings file if the page can't make outside requests directly.
+var CF_PROXY_URL = 'http://127.0.0.1:8081/module/' + encodeURIComponent('gh/Qbxah88/Clearfeed@main') + '/settings.json';
+
+// Control probe: a same-origin request. If this also fails, the problem is in
+// this script, not the network.
+function cfProbeSameOrigin() {
+  cfXhrJson('GET', '/youtubei/v1/ping?t=' + Date.now(), null, function (d, st, how) { cfFetchStatus.same = st + (how ? how : ''); });
+}
 
 // Fetch settings: first the GitHub file (which may only point at the hub),
 // falling back to the jsDelivr copy, then, if a hub is configured, the hub's
@@ -173,18 +198,23 @@ function cfFetchRemoteSettings(done) {
       if (done) done(true);
     });
   }
-  cfXhrJson('GET', url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Math.floor(Date.now() / 60000), null, function (gh, st) {
-    cfFetchStatus.gh = st;
+  cfXhrJson('GET', url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Math.floor(Date.now() / 60000), null, function (gh, st, how) {
+    cfFetchStatus.gh = st + (how && how !== 'xhr' ? '(' + how + ')' : '');
     if (gh && typeof gh === 'object') { gotFile(gh); return; }
     if (!cdnUrl) { if (done) done(false); return; }
-    cfXhrJson('GET', cdnUrl, null, function (cg, st2) {
-      cfFetchStatus.cdn = st2;
-      if (cg && typeof cg === 'object') gotFile(cg); else if (done) done(false);
+    cfXhrJson('GET', cdnUrl, null, function (cg, st2, how2) {
+      cfFetchStatus.cdn = st2 + (how2 && how2 !== 'xhr' ? '(' + how2 + ')' : '');
+      if (cg && typeof cg === 'object') { gotFile(cg); return; }
+      cfXhrJson('GET', CF_PROXY_URL, null, function (pg, st3, how3) {
+        cfFetchStatus.proxy = st3 + (how3 && how3 !== 'xhr' ? '(' + how3 + ')' : '');
+        if (pg && typeof pg === 'object') gotFile(pg); else if (done) done(false);
+      });
     });
   });
 }
 
 function cfStartSettingsRefresh() {
+  cfProbeSameOrigin();
   cfFetchRemoteSettings();
   var mins = Number(cfGet('refreshMinutes')) || 10;
   setInterval(cfFetchRemoteSettings, Math.max(1, mins) * 60 * 1000);
@@ -644,7 +674,7 @@ function cfStatusLine() {
   var hub = cfHub();
   if (hub) parts.push('hub: ' + (cfHubLastSend ? 'sent ' + Math.round((Date.now() - cfHubLastSend) / 60000) + ' min ago' : 'not sent yet'));
   else parts.push('no hub');
-  parts.push('http gh ' + cfFetchStatus.gh + ' / cdn ' + cfFetchStatus.cdn + ' / hub ' + cfFetchStatus.hub + ' / post ' + cfFetchStatus.post);
+  parts.push('http gh ' + cfFetchStatus.gh + ' / cdn ' + cfFetchStatus.cdn + ' / proxy ' + cfFetchStatus.proxy + ' / same ' + cfFetchStatus.same + ' / hub ' + cfFetchStatus.hub + ' / post ' + cfFetchStatus.post);
   return parts.join(' · ');
 }
 
