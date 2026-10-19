@@ -181,14 +181,14 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
 
   <section class="panel">
     <h2>Blocked sites</h2>
-    <p>Computers with ClearFeed Web installed. A domain blocks the whole site including subdomains; add a path to block just part of it, e.g. <code>reddit.com/r/something</code>. Google results linking to these sites are hidden too.</p>
+    <p>Computers with ClearFeed installed. A domain blocks the whole site including subdomains; add a path to block just part of it, e.g. <code>reddit.com/r/something</code>. Google results linking to these sites are hidden too.</p>
     <div class="chips" id="chips-blockedSites"></div>
     <div class="adder"><input type="text" id="add-blockedSites" placeholder="tiktok.com"><button class="small" data-add="blockedSites">Add</button></div>
   </section>
 
   <section class="panel">
     <h2>Google</h2>
-    <p>Computers with ClearFeed Web installed.</p>
+    <p>Computers with ClearFeed installed.</p>
     <div class="toggles">
       <label class="switch"><span class="t">Hide results matching the word filters<small>Also hides autocomplete suggestions</small></span><input type="checkbox" id="g-filterResults"></label>
       <label class="switch"><span class="t">Refuse blocked searches<small>Uses the Searches list above</small></span><input type="checkbox" id="g-blockSearches"></label>
@@ -208,7 +208,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
 
   <section class="panel">
     <h2>Spending pause</h2>
-    <p>Computers with ClearFeed Web installed. Before a Pay, Place order or Book now button works, a pause screen asks what it's for, whether you already have it, whether it can wait, and how you're paying. Waiting saves the page to a list with a reminder; going ahead needs a reason and a short countdown. An evening summary says what you kept.</p>
+    <p>Computers with ClearFeed installed. Before a Pay, Place order or Book now button works, a pause screen asks what it's for, whether you already have it, whether it can wait, and how you're paying. Waiting saves the page to a list with a reminder; going ahead needs a reason and a short countdown. An evening summary says what you kept.</p>
     <div class="toggles">
       <label class="switch"><span class="t">Spending pause on</span><input type="checkbox" id="s-enabled"></label>
       <label class="switch"><span class="t">Countdown before Pay unlocks<small>seconds</small></span><input type="number" id="s-countdownSec" min="5" max="600" style="width:90px"></label>
@@ -216,7 +216,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
       <label class="switch"><span class="t">Evening summary at<small>24-hour clock, e.g. 21:00</small></span><input type="text" id="s-summaryTime" style="width:90px"></label>
       <label class="switch"><span class="t">Currency symbol</span><input type="text" id="s-currency" style="width:60px"></label>
       <label class="switch"><span class="t">Monthly rent<small>used for "that's X% of your rent"</small></span><input type="number" id="s-rent" min="0" style="width:110px"></label>
-      <label class="switch"><span class="t">AI second opinion<small>rating, complaints, cheaper elsewhere, newer model; needs the API key in ClearFeed Web settings</small></span><input type="checkbox" id="s-aiAdvice"></label>
+      <label class="switch"><span class="t">AI second opinion<small>rating, complaints, cheaper elsewhere, newer model; needs the API key in ClearFeed settings</small></span><input type="checkbox" id="s-aiAdvice"></label>
       <label class="switch"><span class="t">Let it look things up on the web<small>about 1p per lookup, up to 3 per check</small></span><input type="checkbox" id="s-aiWebSearch"></label>
     </div>
     <div class="lbl">Savings goals (name: amount)</div>
@@ -370,8 +370,8 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
       hubFetch('/settings')
         .then(function (j) {
           settings = ensureShape(j);
-          dirty = false; $('save').disabled = true; render();
-          setStatus('Loaded from the hub.' + (j._updatedAt ? ' Last saved ' + new Date(j._updatedAt).toLocaleString() + '.' : ' Nothing saved there yet; Save will send these.'));
+          dirty = !j._updatedAt; $('save').disabled = !dirty; render();
+          setStatus('Loaded from the hub.' + (j._updatedAt ? ' Last saved ' + new Date(j._updatedAt).toLocaleString() + '.' : ' Nothing saved there yet: click Save to send these settings.'));
           loadLog();
         })
         .catch(function (e) { setStatus('Could not reach the hub: ' + e.message, 'err'); });
