@@ -1,4 +1,4 @@
-/* ClearFeed TV v1.2.0 — built 2026-10-19T10:31:23.982Z */
+/* ClearFeed TV v1.3.0 — built 2026-10-19T13:14:56.641Z */
 (function () {
 'use strict';
 
@@ -16,7 +16,7 @@
 
 var CF_STORAGE_KEY = 'clearfeed-tv';
 var CF_LOG_KEY = 'clearfeed-tv-log';
-var CF_VERSION = '1.2.0';
+var CF_VERSION = '1.3.0';
 
 var CF_DEFAULTS = {
   // Where to fetch shared settings from. Leave empty to use local settings only.
@@ -61,7 +61,10 @@ var CF_DEFAULTS = {
 
   // ClearFeed hub (optional). Put this block in settings.json on GitHub once;
   // from then on settings are read from the hub and the TV sends its log there.
-  hub: { url: '', deviceKey: '', tvName: 'Samsung TV' }
+  hub: { url: '', deviceKey: '', tvName: 'Samsung TV' },
+
+  // Earn it: a First/Then board on the home screen (see 50-earn.js)
+  earn: { enabled: false, learn: [], songs: [], videosPerSong: 1, songsPerDay: 3, carryOver: false, celebrate: true, onlyBoard: false, learnTitle: 'Learn', songsTitle: 'Songs' }
 };
 
 var cfSettings = null;
@@ -186,6 +189,7 @@ function cfStoreRemote(remote) {
   store.remoteFetchedAt = Date.now();
   cfWriteStore(store);
   cfRebuildSettings();
+  if (typeof cfEarnOnSettings === 'function') cfEarnOnSettings();
 }
 
 // Last HTTP status of each fetch, shown in the blue-button header for diagnosis
@@ -250,7 +254,7 @@ var cfHubLastSend = 0;
 
 function cfHubQueueEntry(entry) {
   if (cfHubQueue.length >= 200) return;
-  var kind = entry.reason === 'search' ? 'search' : entry.reason === 'creator' ? 'creator' : 'hidden';
+  var kind = entry.reason === 'search' ? 'search' : entry.reason === 'creator' ? 'creator' : entry.reason === 'earn' ? 'earn' : 'hidden';
   cfHubQueue.push({
     t: entry.t || Date.now(),
     kind: kind,
@@ -532,10 +536,12 @@ function cfIsContentItem(item) {
 // Decide for one tile: returns {reason, detail} or null
 function cfJudgeItem(item) {
   if (!cfIsContentItem(item)) return null;
+  if (item.tileRenderer && item.tileRenderer.clearfeedPick) return null; // our own board
   var vid = cfVideoId(item);
   var ids = cfCollectCreatorIds(item);
   var lines = cfCollectLineTexts(item);
   var creatorCandidates = ids.concat(lines);
+  if (typeof cfEarnLocked === 'function' && cfEarnLocked(vid, creatorCandidates)) return { reason: 'song', detail: 'earn it first' };
 
   if (cfIsTrustedCreator(creatorCandidates)) return null;
   if (vid && cfIsBlockedVideo(vid)) return { reason: 'video', detail: vid };
@@ -856,6 +862,13 @@ function cfCheckPlayerResponse(r) {
   var vd = r.videoDetails;
   if (!vd || typeof vd !== 'object') return false;
   var names = [vd.author || '', vd.channelId || ''];
+  if (typeof cfEarnLocked === 'function' && cfEarnLocked(vd.videoId, names)) {
+    r.playabilityStatus = { status: 'ERROR', reason: cfEarnStars() + '  Learn first', errorScreen: { playerErrorMessageRenderer: { reason: { simpleText: 'Learn first' }, subreason: { simpleText: 'Finish a video from the Learn row to earn a song' } } } };
+    delete r.streamingData;
+    cfLog({ reason: 'song', detail: 'locked', title: vd.title || vd.videoId, videoId: vd.videoId });
+    return true;
+  }
+  if (typeof cfEarnOnPlayer === 'function') cfEarnOnPlayer(vd);
   if (cfIsTrustedCreator(names)) return false;
   var reason = null, detail = '';
   if (vd.videoId && cfIsBlockedVideo(vd.videoId)) { reason = 'video'; detail = vd.videoId; }
@@ -918,6 +931,7 @@ function cfInstallParseHook() {
         }
         var removed = cfFilterResponse(r);
         if (removed > 0) cfNotifyHidden(removed);
+        if (typeof cfEarnInjectHome === 'function') cfEarnInjectHome(r);
       }
     } catch (e) { }
     return r;
@@ -965,6 +979,14 @@ function cfHandleBlockedSearch(query, why) {
 function cfIsSearchUrl(url) {
   return typeof url === 'string' && url.indexOf('/youtubei/v1/search') !== -1;
 }
+// Remember which browse page was asked for, so the board only goes on Home
+function cfNoteBrowse(url, body) {
+  try {
+    if (typeof url !== 'string' || url.indexOf('/youtubei/v1/browse') === -1) return;
+    var obj = typeof body === 'string' ? cfOrigParse(body) : body;
+    cfLastBrowseId = (obj && typeof obj.browseId === 'string') ? obj.browseId : '';
+  } catch (e) { }
+}
 
 function cfInstallFetchHook() {
   if (typeof window.fetch !== 'function') return;
@@ -972,6 +994,7 @@ function cfInstallFetchHook() {
   window.fetch = function (input, init) {
     try {
       var url = typeof input === 'string' ? input : (input && input.url);
+      cfNoteBrowse(url, init && init.body);
       if (cfIsSearchUrl(url)) {
         var q = cfQueryFromBody(init && init.body);
         var why = cfIsBlockedSearch(q);
@@ -1000,6 +1023,7 @@ function cfInstallXhrHook() {
   };
   proto.send = function (body) {
     try {
+      cfNoteBrowse(this.__cfUrl, body);
       if (cfIsSearchUrl(this.__cfUrl)) {
         var q = cfQueryFromBody(body);
         var why = cfIsBlockedSearch(q);
@@ -1072,6 +1096,10 @@ function cfCommandBlocked(cmd) {
     }
   }
   var we = cmd.watchEndpoint || (cmd.reelWatchEndpoint);
+  if (we && we.videoId && typeof cfEarnLocked === 'function' && cfEarnLocked(we.videoId, [])) {
+    cfLog({ reason: 'song', detail: 'locked', title: 'Song ' + we.videoId, videoId: we.videoId });
+    return { title: cfEarnStars() + '  Learn first', message: 'Finish a video from the Learn row to earn a song' };
+  }
   if (we && we.videoId && cfIsBlockedVideo(we.videoId)) {
     cfLog({ reason: 'video', detail: we.videoId, title: 'Video ' + we.videoId });
     return { title: 'Video blocked', message: 'This video is on your blocked list' };
@@ -1098,6 +1126,306 @@ function cfCommandBlocked(cmd) {
 }
 
 
+// ===== 50-earn.js =====
+// ---------------------------------------------------------------------------
+// ClearFeed TV: "Earn it" — a First/Then board on the YouTube home screen.
+//
+//   First: a Learn row (newest videos from the learning channels you chose).
+//   Then:  finishing one properly (watched to the end, normal speed) fills a
+//          star; enough stars earn a song, and a Songs row appears.
+//   Song channels stay hidden everywhere until a song has been earned.
+//
+// Settings (settings.json / hub, key "earn"):
+//   enabled, learn[], songs[] (video, playlist or channel links / @handles),
+//   videosPerSong, songsPerDay, carryOver, celebrate, onlyBoard,
+//   learnTitle, songsTitle
+// State lives on the TV in localStorage; only "earned/spent" events go to the hub.
+// ---------------------------------------------------------------------------
+
+var CF_EARN_KEY = 'clearfeed-earn';
+var CF_EARN_CACHE_KEY = 'clearfeed-earn-cache';
+var cfEarnCurrent = null;      // { id, channelId, author, title, kind: 'learn'|'song'|'' , spent }
+var cfEarnWatched = {};        // videoId -> seconds actually playing today
+var cfEarnFeeds = { learn: [], songs: [], at: 0 }; // resolved video lists
+var cfLastBrowseId = '';
+
+function cfEarnCfg() {
+  var e = cfGet('earn') || {};
+  return {
+    enabled: !!e.enabled,
+    learn: Array.isArray(e.learn) ? e.learn : [],
+    songs: Array.isArray(e.songs) ? e.songs : [],
+    videosPerSong: Math.max(1, Number(e.videosPerSong) || 1),
+    songsPerDay: Math.max(0, Number(e.songsPerDay) || 3),
+    carryOver: !!e.carryOver,
+    celebrate: e.celebrate !== false,
+    onlyBoard: !!e.onlyBoard,
+    learnTitle: e.learnTitle || 'Learn',
+    songsTitle: e.songsTitle || 'Songs'
+  };
+}
+
+function cfToday() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+
+function cfEarnState() {
+  var s = {};
+  try { s = JSON.parse(window.localStorage.getItem(CF_EARN_KEY) || '{}') || {}; } catch (e) { s = {}; }
+  var cfg = cfEarnCfg();
+  if (s.day !== cfToday()) {
+    s = { day: cfToday(), progress: 0, credits: cfg.carryOver ? (Number(s.credits) || 0) : 0, songsToday: 0, done: {} };
+    cfEarnSave(s);
+  }
+  s.progress = Number(s.progress) || 0; s.credits = Number(s.credits) || 0; s.songsToday = Number(s.songsToday) || 0; s.done = s.done || {};
+  return s;
+}
+function cfEarnSave(s) { try { window.localStorage.setItem(CF_EARN_KEY, JSON.stringify(s)); } catch (e) { } }
+
+// ---- turning the lists in settings into video ids / channel ids ----------
+function cfEarnParseEntry(raw) {
+  var v = String(raw || '').trim();
+  if (!v) return null;
+  var m;
+  if ((m = v.match(/[?&]list=([A-Za-z0-9_-]{10,})/))) return { type: 'playlist', id: m[1] };
+  if (/^PL[A-Za-z0-9_-]{10,}$/.test(v)) return { type: 'playlist', id: v };
+  if ((m = v.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{11})/))) return { type: 'video', id: m[1] };
+  if (/^[A-Za-z0-9_-]{11}$/.test(v) && v.indexOf('UC') !== 0) return { type: 'video', id: v };
+  if ((m = v.match(/(UC[A-Za-z0-9_-]{22})/))) return { type: 'channel', id: m[1] };
+  if ((m = v.match(/youtube\.com\/@([^\/?#\s]+)/)) || (m = v.match(/^@([^\/?#\s]+)$/))) return { type: 'handle', id: m[1] };
+  if ((m = v.match(/youtube\.com\/(?:c|user)\/([^\/?#\s]+)/))) return { type: 'handle', id: m[1] };
+  return { type: 'handle', id: v.replace(/^@/, '') };
+}
+
+function cfXhrText(url, done) {
+  try {
+    var xhr = new cfOrigXhr();
+    xhr.open('GET', url, true);
+    xhr.onreadystatechange = function () { if (xhr.readyState === 4) done(xhr.status >= 200 && xhr.status < 300 ? xhr.responseText : null, xhr.status); };
+    xhr.send(null);
+  } catch (e) { done(null, 0); }
+}
+
+function cfEarnCache() { try { return JSON.parse(window.localStorage.getItem(CF_EARN_CACHE_KEY) || '{}') || {}; } catch (e) { return {}; } }
+function cfEarnCacheSave(c) { try { window.localStorage.setItem(CF_EARN_CACHE_KEY, JSON.stringify(c)); } catch (e) { } }
+
+// @handle -> UC id, by reading the channel page (same origin as the TV app)
+function cfResolveHandle(handle, done) {
+  var cache = cfEarnCache();
+  if (cache['h:' + handle]) { done(cache['h:' + handle]); return; }
+  cfXhrText('https://www.youtube.com/@' + encodeURIComponent(handle), function (html) {
+    var m = html && (html.match(/"channelId":"(UC[A-Za-z0-9_-]{22})"/) || html.match(/"externalId":"(UC[A-Za-z0-9_-]{22})"/) || html.match(/channel\/(UC[A-Za-z0-9_-]{22})/));
+    if (m) { cache['h:' + handle] = m[1]; cfEarnCacheSave(cache); done(m[1]); }
+    else done(null);
+  });
+}
+
+// Public RSS feed of a channel or playlist -> [{ id, title, author }]
+function cfFetchFeed(kind, id, done) {
+  var url = 'https://www.youtube.com/feeds/videos.xml?' + (kind === 'playlist' ? 'playlist_id=' : 'channel_id=') + encodeURIComponent(id);
+  cfXhrText(url, function (xml) {
+    if (!xml) { done([]); return; }
+    var out = [];
+    var re = /<entry>([\s\S]*?)<\/entry>/g, m;
+    while ((m = re.exec(xml)) && out.length < 15) {
+      var e = m[1];
+      var vid = (e.match(/<yt:videoId>([^<]+)<\/yt:videoId>/) || [])[1];
+      var title = (e.match(/<title>([^<]*)<\/title>/) || [])[1] || '';
+      var author = (e.match(/<name>([^<]*)<\/name>/) || [])[1] || '';
+      var chan = (e.match(/<yt:channelId>([^<]+)<\/yt:channelId>/) || [])[1] || '';
+      if (vid) out.push({ id: vid, title: cfDecodeXml(title), author: cfDecodeXml(author), channelId: chan });
+    }
+    done(out);
+  });
+}
+function cfDecodeXml(s) { return String(s).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'"); }
+
+// Resolve one list (learn or songs) into videos + channel ids; calls done(videos, channelIds)
+function cfEarnResolveList(entries, done) {
+  var videos = [], channels = {}, pending = 0, singles = [];
+  function finish() { if (pending === 0) done(videos, Object.keys(channels)); }
+  entries.forEach(function (raw) {
+    var p = cfEarnParseEntry(raw); if (!p) return;
+    if (p.type === 'video') { singles.push(p.id); return; }
+    pending++;
+    function gotChannel(cid) {
+      if (!cid) { pending--; finish(); return; }
+      channels[cid] = 1;
+      cfFetchFeed('channel', cid, function (list) { list.forEach(function (v) { v.source = raw; videos.push(v); }); pending--; finish(); });
+    }
+    if (p.type === 'playlist') cfFetchFeed('playlist', p.id, function (list) { list.forEach(function (v) { v.source = raw; if (v.channelId) channels[v.channelId] = 1; videos.push(v); }); pending--; finish(); });
+    else if (p.type === 'channel') gotChannel(p.id);
+    else cfResolveHandle(p.id, gotChannel);
+  });
+  // single videos go first, in the order given
+  singles.reverse().forEach(function (id) { videos.unshift({ id: id, title: '', author: '', single: true }); });
+  finish();
+}
+
+function cfEarnRefreshFeeds(force) {
+  var cfg = cfEarnCfg();
+  if (!cfg.enabled) return;
+  if (!force && Date.now() - cfEarnFeeds.at < 60 * 60 * 1000 && (cfEarnFeeds.learn.length || cfEarnFeeds.songs.length)) return;
+  cfEarnResolveList(cfg.learn, function (lv, lc) {
+    cfEarnResolveList(cfg.songs, function (sv, sc) {
+      cfEarnFeeds = { learn: lv, songs: sv, learnChannels: lc, songChannels: sc, at: Date.now() };
+      var cache = cfEarnCache(); cache.feeds = cfEarnFeeds; cfEarnCacheSave(cache);
+    });
+  });
+}
+function cfEarnLoadCachedFeeds() {
+  var c = cfEarnCache();
+  if (c.feeds && c.feeds.at) cfEarnFeeds = c.feeds;
+}
+
+// ---- classification ---------------------------------------------------------
+function cfEarnKindOf(videoId, channelId, author) {
+  var f = cfEarnFeeds;
+  function inList(list) { for (var i = 0; i < list.length; i++) if (list[i].id === videoId) return true; return false; }
+  function inChannels(list) { return !!(channelId && list && list.indexOf(channelId) !== -1); }
+  if (inList(f.songs || []) || inChannels(f.songChannels)) return 'song';
+  if (inList(f.learn || []) || inChannels(f.learnChannels)) return 'learn';
+  // a channel named in the song list but not yet resolved (handle) can still be matched by author name
+  var cfg = cfEarnCfg();
+  var a = String(author || '').toLowerCase();
+  if (a && cfg.songs.some(function (s) { return String(s).toLowerCase().indexOf(a) !== -1; })) return 'song';
+  return '';
+}
+
+// Songs are locked while nothing has been earned (and after the daily cap)
+function cfEarnLocked(videoId, names) {
+  var cfg = cfEarnCfg();
+  if (!cfg.enabled) return false;
+  var kind = '';
+  for (var i = 0; i < (names || []).length && !kind; i++) kind = cfEarnKindOf(videoId, /^UC/.test(names[i]) ? names[i] : '', names[i]);
+  if (!kind) kind = cfEarnKindOf(videoId, '', '');
+  if (kind !== 'song') return false;
+  if (cfEarnCurrent && cfEarnCurrent.id === videoId && cfEarnCurrent.spent) return false; // the one playing now
+  return cfEarnState().credits <= 0;
+}
+
+// ---- the board on the home screen -------------------------------------------
+function cfEarnTile(v) {
+  var title = v.title || 'Video';
+  return {
+    tileRenderer: {
+      clearfeedPick: true,
+      contentType: 'TILE_CONTENT_TYPE_VIDEO',
+      contentId: v.id,
+      style: 'TILE_STYLE_YTLR_DEFAULT',
+      header: { tileHeaderRenderer: { thumbnail: { thumbnails: [{ url: 'https://i.ytimg.com/vi/' + v.id + '/hqdefault.jpg', width: 480, height: 360 }] } } },
+      metadata: { tileMetadataRenderer: { title: { simpleText: title }, lines: v.author ? [{ lineRenderer: { items: [{ lineItemRenderer: { text: { simpleText: v.author } } }] } }] : [] } },
+      onSelectCommand: { watchEndpoint: { videoId: v.id } }
+    }
+  };
+}
+function cfEarnShelf(title, videos) {
+  var items = videos.slice(0, 20).map(cfEarnTile);
+  return {
+    shelfRenderer: {
+      clearfeedPick: true,
+      shelfHeaderRenderer: { title: { simpleText: title } },
+      headerRenderer: { shelfHeaderRenderer: { title: { simpleText: title } } },
+      content: { horizontalListRenderer: { items: items } }
+    }
+  };
+}
+function cfEarnStars() {
+  var cfg = cfEarnCfg(), s = cfEarnState();
+  var out = '';
+  for (var i = 0; i < cfg.videosPerSong; i++) out += i < s.progress ? '★' : '☆';
+  return out;
+}
+function cfEarnSongsLeft() {
+  var cfg = cfEarnCfg(), s = cfEarnState();
+  return Math.max(0, Math.min(s.credits, cfg.songsPerDay - s.songsToday));
+}
+function cfEarnInjectHome(r) {
+  var cfg = cfEarnCfg();
+  if (!cfg.enabled) return false;
+  if (!r || !r.contents || !r.contents.tvBrowseRenderer || r.metadata || r.header) return false;
+  if (cfLastBrowseId && !/^(default|FEwhat_to_watch|FEtopics)$/.test(cfLastBrowseId)) return false;
+  var sl;
+  try { sl = r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer; } catch (e) { sl = null; }
+  if (!sl || !Array.isArray(sl.contents)) return false;
+  var shelves = [];
+  var left = cfEarnSongsLeft();
+  if (left > 0 && cfEarnFeeds.songs.length) shelves.push(cfEarnShelf('♪ ' + cfg.songsTitle + '  ' + left, cfEarnFeeds.songs));
+  if (cfEarnFeeds.learn.length) shelves.push(cfEarnShelf(cfEarnStars() + '  ' + cfg.learnTitle, cfEarnFeeds.learn));
+  if (!shelves.length) return false;
+  if (cfg.onlyBoard) sl.contents = shelves;
+  else sl.contents = shelves.concat(sl.contents);
+  return true;
+}
+
+// ---- watching: completion earns, songs spend ----------------------------------
+function cfEarnOnPlayer(vd) {
+  var cfg = cfEarnCfg();
+  if (!cfg.enabled || !vd || !vd.videoId) return;
+  if (cfEarnCurrent && cfEarnCurrent.id === vd.videoId) return;
+  var kind = cfEarnKindOf(vd.videoId, vd.channelId || '', vd.author || '');
+  cfEarnCurrent = { id: vd.videoId, channelId: vd.channelId || '', author: vd.author || '', title: vd.title || '', kind: kind, spent: false, counted: false };
+  if (kind === 'song') {
+    var s = cfEarnState();
+    if (cfEarnSongsLeft() > 0) {
+      s.credits--; s.songsToday++; cfEarnSave(s);
+      cfEarnCurrent.spent = true;
+      cfLog({ reason: 'earn', detail: 'song', title: 'Song: ' + (vd.title || vd.videoId), videoId: vd.videoId });
+      if (cfg.celebrate) cfToast('♪ ' + cfg.songsTitle, cfEarnSongsLeft() > 0 ? cfEarnSongsLeft() + ' more after this' : 'Last one for now');
+    }
+  }
+}
+function cfEarnTick() {
+  var cfg = cfEarnCfg();
+  if (!cfg.enabled || !cfEarnCurrent || cfEarnCurrent.counted) return;
+  var v = null;
+  try { v = document.querySelector('video'); } catch (e) { v = null; }
+  if (!v || !v.duration || v.paused || v.ended && false) { }
+  if (!v || !(v.duration > 0)) return;
+  var id = cfEarnCurrent.id;
+  if (!v.paused && (v.playbackRate || 1) <= 1.05) cfEarnWatched[id] = (cfEarnWatched[id] || 0) + 1;
+  var watched = cfEarnWatched[id] || 0;
+  var nearEnd = v.currentTime >= v.duration - 2 || v.ended;
+  if (nearEnd && watched >= v.duration * 0.85) {
+    cfEarnCurrent.counted = true;
+    if (cfEarnCurrent.kind === 'learn') cfEarnCompleted(cfEarnCurrent);
+    else if (cfEarnCurrent.kind === 'song' && cfEarnSongsLeft() <= 0) {
+      if (cfg.celebrate) cfToast(cfEarnStars() + ' ' + cfg.learnTitle, 'Learn one more to earn a song');
+      setTimeout(cfSoftReload, 2500);
+    }
+  }
+}
+function cfEarnCompleted(cur) {
+  var cfg = cfEarnCfg(), s = cfEarnState();
+  if (s.done[cur.id]) return; // same video twice in a day earns once
+  s.done[cur.id] = 1;
+  s.progress++;
+  var earned = false;
+  if (s.progress >= cfg.videosPerSong) {
+    s.progress = 0;
+    if (s.credits + s.songsToday < cfg.songsPerDay) { s.credits++; earned = true; }
+  }
+  cfEarnSave(s);
+  cfLog({ reason: 'earn', detail: earned ? 'song earned' : 'star', title: 'Completed: ' + (cur.title || cur.id), videoId: cur.id });
+  if (cfg.celebrate) cfToast(earned ? '★ ' + cfg.songsTitle + '!' : cfEarnStars(), earned ? 'A song is ready' : 'Keep going');
+  setTimeout(cfSoftReload, 2500);
+}
+
+// Settings arrived or changed: fetch the feeds again if the lists differ
+var cfEarnListsSig = '';
+function cfEarnOnSettings() {
+  var cfg = cfEarnCfg();
+  var sig = cfg.enabled ? JSON.stringify([cfg.learn, cfg.songs]) : '';
+  if (sig === cfEarnListsSig) return;
+  cfEarnListsSig = sig;
+  if (cfg.enabled) cfEarnRefreshFeeds(true);
+}
+function cfEarnStart() {
+  cfEarnLoadCachedFeeds();
+  cfEarnRefreshFeeds(false);
+  setInterval(function () { cfEarnRefreshFeeds(false); }, 10 * 60 * 1000);
+  setInterval(cfEarnTick, 1000);
+}
+
+
 // ===== 90-main.js =====
 // ---------------------------------------------------------------------------
 // ClearFeed TV: start-up
@@ -1116,7 +1444,7 @@ function cfOnKey(ev) {
 
 function cfStart() {
   if (window.__clearfeedTV) return;
-  window.__clearfeedTV = { version: CF_VERSION, log: cfReadLog, settings: function () { return cfSettings; }, flush: function () { cfHubFlush(true); }, status: cfStatusLine };
+  window.__clearfeedTV = { version: CF_VERSION, log: cfReadLog, settings: function () { return cfSettings; }, flush: function () { cfHubFlush(true); }, status: cfStatusLine, earn: { state: cfEarnState, feeds: function () { return cfEarnFeeds; }, tick: cfEarnTick, refresh: function () { cfEarnRefreshFeeds(true); } } };
 
   cfRebuildSettings();
   cfInstallParseHook();
@@ -1124,6 +1452,7 @@ function cfStart() {
   cfInstallXhrHook();
   cfStartSettingsRefresh();
   cfStartHubLog();
+  cfEarnStart();
 
   try { document.addEventListener('keydown', cfOnKey, true); } catch (e) { }
 
