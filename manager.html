@@ -103,6 +103,14 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
 .tag { display: inline-block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--chip); color: var(--muted); margin-right: 6px; }
 .tag.search { color: var(--danger); } .tag.spend { color: var(--accent); }
 @media (max-width: 560px) { .entry { grid-template-columns: 1fr; } .entry .act { justify-content: flex-start; } }
+.menu { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; background: var(--bg); border-bottom: 1px solid var(--line); scrollbar-width: none; }
+.menu a { flex: 0 0 auto; text-decoration: none; color: var(--fg); font-size: 0.9rem; font-weight: 700; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); }
+.menu a.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.panel > h2 { cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; }
+.panel > h2::after { content: "−"; color: var(--muted); font-weight: 400; font-size: 1.3rem; line-height: 1; }
+.panel.closed > h2::after { content: "+"; }
+.panel.closed > :not(h2) { display: none; }
+.panel > h2 .cnt { font-size: 0.8rem; color: var(--muted); font-weight: 400; margin-left: auto; margin-right: 10px; }
 @media (prefers-reduced-motion: no-preference) { .chip { transition: background 0.15s; } }
 </style>
 </head>
@@ -114,6 +122,19 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
     <h1>ClearFeed Manager</h1>
     <p class="sub">One settings page for every device. The TV and every computer running ClearFeed pick up changes within about 10 minutes, or on next launch.</p>
   </header>
+  <nav class="menu" id="menu" aria-label="Sections">
+    <a href="#activity" data-for="activity">Activity</a>
+    <a href="#searches" data-for="searches">Searches</a>
+    <a href="#channels" data-for="channels">Channels</a>
+    <a href="#videos" data-for="videos">Videos</a>
+    <a href="#sites" data-for="sites">Sites</a>
+    <a href="#google" data-for="google">Google</a>
+    <a href="#reels" data-for="reels">Reels</a>
+    <a href="#spending" data-for="spending">Spending</a>
+    <a href="#words" data-for="words">Words</a>
+    <a href="#other" data-for="other">Other</a>
+    <a href="#setup" data-for="setup">Connection</a>
+  </nav>
 
   <section class="panel" id="setup">
     <h2>Connection</h2>
@@ -151,7 +172,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
     <div id="logList" class="loglist"><div class="empty">Nothing yet</div></div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="searches">
     <h2>Searches</h2>
     <p>A search containing any of these words or phrases is refused, on the TV and on Google.</p>
     <div class="chips" id="chips-blockedSearches"></div>
@@ -161,7 +182,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="channels">
     <h2>Channels</h2>
     <p>Paste a channel link, an @handle, a channel ID or the exact channel name. Blocked channels vanish from feeds, search and up-next, and their page is blanked.</p>
     <div class="lbl">Blocked</div>
@@ -172,21 +193,21 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
     <div class="adder"><input type="text" id="add-trustedCreators" placeholder="https://www.youtube.com/@channel"><button class="small" data-add="trustedCreators">Add</button></div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="videos">
     <h2>Videos</h2>
     <p>Paste a video link. It won't play even if opened directly.</p>
     <div class="chips" id="chips-blockedVideos"></div>
     <div class="adder"><input type="text" id="add-blockedVideos" placeholder="https://www.youtube.com/watch?v=…"><button class="small" data-add="blockedVideos">Add</button></div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="sites">
     <h2>Blocked sites</h2>
     <p>Computers with ClearFeed installed. A domain blocks the whole site including subdomains; add a path to block just part of it, e.g. <code>reddit.com/r/something</code>. Google results linking to these sites are hidden too.</p>
     <div class="chips" id="chips-blockedSites"></div>
     <div class="adder"><input type="text" id="add-blockedSites" placeholder="tiktok.com"><button class="small" data-add="blockedSites">Add</button></div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="google">
     <h2>Google</h2>
     <p>Computers with ClearFeed installed.</p>
     <div class="toggles">
@@ -196,7 +217,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="reels">
     <h2>Reels and Shorts</h2>
     <p>Computers with ClearFeed installed. Each reel in the full-screen viewer is checked before it plays; the timer counts time actually spent watching.</p>
     <div class="toggles">
@@ -206,7 +227,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="spending">
     <h2>Spending pause</h2>
     <p>Computers with ClearFeed installed. Before a Pay, Place order or Book now button works, a pause screen asks what it's for, whether you already have it, whether it can wait, and how you're paying. Waiting saves the page to a list with a reminder; going ahead needs a reason and a short countdown. An evening summary says what you kept.</p>
     <div class="toggles">
@@ -224,7 +245,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
     <div class="adder"><input type="text" id="add-goals" placeholder="Holiday: 800"><button class="small" data-add="goals">Add</button></div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="words">
     <h2>Word filters</h2>
     <p>Built-in word lists judge titles and channel names. Switch categories on or off, add your own words, and protect phrases that over-block.</p>
     <div class="toggles">
@@ -245,7 +266,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
     <div class="adder"><input type="text" id="add-alwaysAllow" placeholder="e.g. book haul"><button class="small" data-add="alwaysAllow">Add</button></div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="other">
     <h2>Other</h2>
     <div class="toggles">
       <label class="switch"><span class="t">Hide all Shorts</span><input type="checkbox" id="hideShorts"></label>
@@ -321,8 +342,10 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
     settings[k] = settings[k].filter(function (x) { return x !== v; });
   }
 
+  var COUNT_IN = { blockedSearches: 'searches', blockedCreators: 'channels', blockedVideos: 'videos', blockedSites: 'sites', extraWords: 'words' };
   function renderList(k) {
     var box = $('chips-' + k); box.innerHTML = '';
+    if (COUNT_IN[k]) { var h2 = document.querySelector('#' + COUNT_IN[k] + ' > h2'); if (h2) { var c = h2.querySelector('.cnt'); if (!c) { c = document.createElement('span'); c.className = 'cnt'; h2.appendChild(c); } var n = listGet(k).length; c.textContent = n ? n + ' blocked' : ''; } }
     var items = listGet(k);
     if (!items.length) { var e = document.createElement('div'); e.className = 'empty'; e.textContent = 'Nothing yet'; box.appendChild(e); return; }
     items.forEach(function (v) {
@@ -366,7 +389,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
   function load() {
     setStatus('Loading settings…');
     if (hubMode()) {
-      $('activity').hidden = false;
+      $('activity').hidden = false; document.querySelector('#menu a[data-for=activity]').hidden = false;
       hubFetch('/settings')
         .then(function (j) {
           settings = ensureShape(j);
@@ -377,7 +400,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
         .catch(function (e) { setStatus('Could not reach the hub: ' + e.message, 'err'); });
       return;
     }
-    $('activity').hidden = true;
+    $('activity').hidden = true; document.querySelector('#menu a[data-for=activity]').hidden = true;
     fetch(API + '?ref=main&t=' + Date.now(), { headers: headers() })
       .then(function (r) { if (!r.ok) throw new Error('GitHub replied ' + r.status); return r.json(); })
       .then(function (j) {
@@ -468,7 +491,7 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
       function btn(label, fn) { var b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.addEventListener('click', function () { fn(); b.textContent = 'Added'; b.disabled = true; }); act.appendChild(b); }
       if (k === 'search') {
         var q = (e.text || '').replace(/^Search:\s*/i, '').trim();
-        if (q) btn('Block "' + q.slice(0, 24) + '"', function () { listAdd('blockedSearches', q); renderList('blockedSearches'); markDirty(); });
+        if (q) btn('Block "' + q.slice(0, 24) + '"', function () { listAdd('blockedSearches', q); renderList('blockedSearches'); markDirty(); document.getElementById('searches').classList.remove('closed'); });
       }
       if (e.creator) btn('Block channel', function () { listAdd('blockedCreators', e.creator); renderList('blockedCreators'); markDirty(); });
       if (e.videoId) btn('Block video', function () { listAdd('blockedVideos', e.videoId); renderList('blockedVideos'); markDirty(); });
@@ -487,6 +510,37 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
   $('saveHub').addEventListener('click', function () { lsSet('cf-hub-url', hubUrl()); lsSet('cf-hub-key', hubKey()); setStatus(hubUrl() ? 'Hub remembered in this browser.' : 'Hub cleared; using GitHub.'); load(); });
   var savedHub = lsGet('cf-hub-url'); if (savedHub) $('hubUrl').value = savedHub;
   var savedHubKey = lsGet('cf-hub-key'); if (savedHubKey) $('hubKey').value = savedHubKey;
+
+
+  // ---------- collapsible sections and the menu ----------
+  (function () {
+    var panels = Array.prototype.slice.call(document.querySelectorAll('section.panel'));
+    var openSet = {};
+    try { openSet = JSON.parse(lsGet('cf-open') || '{}'); } catch (e) { openSet = {}; }
+    var first = !lsGet('cf-open');
+    panels.forEach(function (p) {
+      var h = p.querySelector('h2'); if (!h || !p.id) return;
+      var open = first ? (p.id === 'activity' || p.id === 'setup' || p.id === 'searches') : !!openSet[p.id];
+      if (first) openSet[p.id] = open;
+      p.classList.toggle('closed', !open);
+      h.addEventListener('click', function () {
+        p.classList.toggle('closed');
+        openSet[p.id] = !p.classList.contains('closed');
+        lsSet('cf-open', JSON.stringify(openSet));
+      });
+    });
+    if (first) lsSet('cf-open', JSON.stringify(openSet));
+    function openPanel(id) {
+      var p = document.getElementById(id); if (!p) return;
+      p.classList.remove('closed'); openSet[id] = true; lsSet('cf-open', JSON.stringify(openSet));
+      p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.querySelectorAll('#menu a').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-for') === id); });
+    }
+    document.querySelectorAll('#menu a').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); openPanel(a.getAttribute('data-for')); });
+    });
+    window.cfOpenPanel = openPanel;
+  })();
 
   // wiring
   document.querySelectorAll('button[data-add]').forEach(function (b) {
