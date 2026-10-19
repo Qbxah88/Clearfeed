@@ -1,4 +1,4 @@
-/* ClearFeed TV v1.5.1 — built 2026-10-19T15:31:01.329Z */
+/* ClearFeed TV v1.5.2 — built 2026-10-19T17:27:05.619Z */
 (function () {
 'use strict';
 
@@ -16,7 +16,7 @@
 
 var CF_STORAGE_KEY = 'clearfeed-tv';
 var CF_LOG_KEY = 'clearfeed-tv-log';
-var CF_VERSION = '1.5.1';
+var CF_VERSION = '1.5.2';
 
 var CF_DEFAULTS = {
   // Where to fetch shared settings from. Leave empty to use local settings only.
@@ -196,6 +196,17 @@ function cfHub() {
   var h = cfGet('hub');
   if (!h || !h.url || !h.deviceKey) return null;
   return { url: String(h.url).replace(/\/+$/, ''), key: h.deviceKey, name: h.tvName || 'Samsung TV' };
+}
+
+// Send a block made on this TV to the hub so every device gets it
+function cfHubBlock(part) {
+  var hub = cfHub();
+  if (!hub) return;
+  part.device = hub.name;
+  cfXhrJson('POST', hub.url + '/block?k=' + encodeURIComponent(hub.key), part, function (res, status) {
+    cfFetchStatus.block = status;
+    if (res && res.ok) setTimeout(function () { cfFetchRemoteSettings(); }, 1500);
+  });
 }
 
 function cfStoreRemote(remote) {
@@ -1646,11 +1657,16 @@ function cfBlockNowPlaying(what) {
     cfAddLocal('blockedCreators', who);
     if (np.author && np.author !== who) cfAddLocal('blockedCreators', np.author);
     cfLog({ reason: 'creator', detail: np.author || who, title: 'Blocked from TV: ' + (np.author || who), videoId: np.videoId, creator: who, fromTv: true });
-    cfModal('ClearFeed', 'Channel blocked', (np.author || who) + ' will not show on this TV. Add it in the manager to block it everywhere.');
+    var shared = [];
+    if (np.channelId) shared.push('https://www.youtube.com/channel/' + np.channelId);
+    if (np.author) shared.push(np.author);
+    cfHubBlock({ creators: shared });
+    cfModal('ClearFeed', 'Channel blocked', (np.author || who) + ' is now blocked on every device.');
   } else {
     cfAddLocal('blockedVideos', np.videoId);
     cfLog({ reason: 'video', detail: np.videoId, title: 'Blocked from TV: ' + (np.title || np.videoId), videoId: np.videoId, creator: np.channelId || '' });
-    cfModal('ClearFeed', 'Video blocked', (np.title || np.videoId) + ' will not play again on this TV.');
+    cfHubBlock({ videos: ['https://www.youtube.com/watch?v=' + np.videoId] });
+    cfModal('ClearFeed', 'Video blocked', (np.title || np.videoId) + ' is now blocked on every device.');
   }
   try { var v = document.querySelector('video'); if (v) v.pause(); } catch (e) { }
   setTimeout(cfSoftReload, 2500);
