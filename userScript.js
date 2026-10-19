@@ -1,4 +1,4 @@
-/* ClearFeed TV v1.0.0 — built 2026-10-18T19:56:36.455Z */
+/* ClearFeed TV v1.0.0 — built 2026-10-19T07:58:02.664Z */
 (function () {
 'use strict';
 
@@ -16,7 +16,7 @@
 
 var CF_STORAGE_KEY = 'clearfeed-tv';
 var CF_LOG_KEY = 'clearfeed-tv-log';
-var CF_VERSION = '1.0.0';
+var CF_VERSION = '1.1.0';
 
 var CF_DEFAULTS = {
   // Where to fetch shared settings from. Leave empty to use local settings only.
@@ -55,7 +55,11 @@ var CF_DEFAULTS = {
   // Show a short toast when things get hidden
   showToasts: true,
   // Keep this many hidden entries in the on-TV log
-  logSize: 200
+  logSize: 200,
+
+  // ClearFeed hub (optional). Put this block in settings.json on GitHub once;
+  // from then on settings are read from the hub and the TV sends its log there.
+  hub: { url: '', deviceKey: '', tvName: 'Samsung TV' }
 };
 
 var cfSettings = null;
@@ -112,40 +116,100 @@ function cfSetLocal(key, value) {
   cfRebuildSettings();
 }
 
-// Fetch the remote settings file with XMLHttpRequest (works on old TV browsers)
-function cfFetchRemoteSettings(done) {
-  var url = cfGet('settingsUrl');
-  if (!url || url.indexOf('CHANGE-ME') !== -1 && false) { if (done) done(false); return; }
+// Plain XMLHttpRequest JSON helper (works on old TV browsers). Uses text/plain
+// so cross-origin POSTs don't need a preflight.
+function cfXhrJson(method, url, body, done) {
   try {
     var xhr = new XMLHttpRequest();
-    // cache-buster so jsDelivr/branch URLs refresh
-    xhr.open('GET', url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Math.floor(Date.now() / 60000), true);
+    xhr.open(method, url, true);
+    if (body) xhr.setRequestHeader('Content-Type', 'text/plain');
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
+      var data = null;
       if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          var remote = JSON.parse(xhr.responseText);
-          if (remote && typeof remote === 'object') {
-            var store = cfReadStore();
-            store.remote = remote;
-            store.remoteFetchedAt = Date.now();
-            cfWriteStore(store);
-            cfRebuildSettings();
-            if (done) done(true);
-            return;
-          }
-        } catch (e) { }
+        try { data = JSON.parse(xhr.responseText); } catch (e) { data = null; }
       }
-      if (done) done(false);
+      done(data, xhr.status);
     };
-    xhr.send();
-  } catch (e) { if (done) done(false); }
+    xhr.send(body ? JSON.stringify(body) : null);
+  } catch (e) { done(null, 0); }
+}
+
+function cfHub() {
+  var h = cfGet('hub');
+  if (!h || !h.url || !h.deviceKey) return null;
+  return { url: String(h.url).replace(/\/+$/, ''), key: h.deviceKey, name: h.tvName || 'Samsung TV' };
+}
+
+function cfStoreRemote(remote) {
+  var store = cfReadStore();
+  store.remote = remote;
+  store.remoteFetchedAt = Date.now();
+  cfWriteStore(store);
+  cfRebuildSettings();
+}
+
+// Fetch settings: first the GitHub file (which may only point at the hub),
+// then, if a hub is configured, the hub's settings on top of it.
+function cfFetchRemoteSettings(done) {
+  var url = cfGet('settingsUrl');
+  if (!url) { if (done) done(false); return; }
+  cfXhrJson('GET', url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Math.floor(Date.now() / 60000), null, function (gh) {
+    if (!gh || typeof gh !== 'object') { if (done) done(false); return; }
+    var hub = gh.hub && gh.hub.url && gh.hub.deviceKey ? gh.hub : null;
+    if (!hub) { cfStoreRemote(gh); if (done) done(true); return; }
+    var hurl = String(hub.url).replace(/\/+$/, '');
+    cfXhrJson('GET', hurl + '/settings?k=' + encodeURIComponent(hub.deviceKey) + '&t=' + Date.now(), null, function (hs) {
+      var merged = cfDeepMerge(gh, hs && typeof hs === 'object' ? hs : {});
+      merged.hub = gh.hub;
+      cfStoreRemote(merged);
+      if (done) done(true);
+    });
+  });
 }
 
 function cfStartSettingsRefresh() {
   cfFetchRemoteSettings();
   var mins = Number(cfGet('refreshMinutes')) || 10;
   setInterval(cfFetchRemoteSettings, Math.max(1, mins) * 60 * 1000);
+}
+
+// ---------------------------------------------------------------------------
+// Hub log: queue what was hidden/blocked and send it every two minutes
+// ---------------------------------------------------------------------------
+var cfHubQueue = [];
+var cfHubLastSend = 0;
+
+function cfHubQueueEntry(entry) {
+  if (cfHubQueue.length >= 200) return;
+  var kind = entry.reason === 'search' ? 'search' : entry.reason === 'creator' ? 'creator' : 'hidden';
+  cfHubQueue.push({
+    t: entry.t || Date.now(),
+    kind: kind,
+    reason: entry.reason || '',
+    text: entry.title || '',
+    detail: entry.detail || '',
+    site: 'youtube-tv',
+    creator: entry.reason === 'creator' ? (entry.detail || '') : (entry.creator || ''),
+    videoId: entry.videoId || ''
+  });
+}
+
+function cfHubFlush(force) {
+  var hub = cfHub();
+  if (!hub) return;
+  if (!force && !cfHubQueue.length) return;
+  var batch = cfHubQueue.splice(0, 200);
+  cfHubLastSend = Date.now();
+  cfXhrJson('POST', hub.url + '/log?k=' + encodeURIComponent(hub.key), { device: hub.name, entries: batch }, function (res, status) {
+    if (!res && batch.length && cfHubQueue.length < 200) cfHubQueue = batch.concat(cfHubQueue); // retry next time
+  });
+}
+
+function cfStartHubLog() {
+  // heartbeat once settings have had a chance to load, then flush every 2 minutes
+  setTimeout(function () { cfHubFlush(true); }, 20000);
+  setInterval(function () { cfHubFlush(false); }, 2 * 60 * 1000);
 }
 
 
@@ -522,6 +586,7 @@ function cfLog(entry) {
     var raw = window.localStorage.getItem(CF_LOG_KEY);
     var log = raw ? JSON.parse(raw) : [];
     entry.t = Date.now();
+    try { cfHubQueueEntry(entry); } catch (e2) { }
     log.unshift(entry);
     var max = Number(cfGet('logSize')) || 200;
     if (log.length > max) log.length = max;
@@ -546,6 +611,23 @@ function cfNotifyHidden(n) {
     cfToastTimer = null;
     if (count > 0) cfToast('ClearFeed', 'Hidden ' + count + (count === 1 ? ' video' : ' videos'));
   }, 1500);
+}
+
+// One line saying where settings came from and whether the hub is reachable
+function cfStatusLine() {
+  var store = cfReadStore();
+  var parts = [];
+  if (store.remoteFetchedAt) {
+    var mins = Math.round((Date.now() - store.remoteFetchedAt) / 60000);
+    var n = (cfGet('blockedCreators') || []).length + (cfGet('blockedSearches') || []).length;
+    parts.push('settings ' + mins + ' min ago (' + n + ' blocked channels/searches)');
+  } else {
+    parts.push('settings: built-in only, GitHub not reached');
+  }
+  var hub = cfHub();
+  if (hub) parts.push('hub: ' + (cfHubLastSend ? 'sent ' + Math.round((Date.now() - cfHubLastSend) / 60000) + ' min ago' : 'not sent yet'));
+  else parts.push('no hub');
+  return parts.join(' · ');
 }
 
 // Show the last few hidden items in a modal (opened with the remote's blue button)
@@ -586,7 +668,7 @@ function cfShowLogModal() {
                   header: {
                     overlayPanelHeaderRenderer: {
                       title: { simpleText: 'ClearFeed v' + CF_VERSION },
-                      subtitle: { simpleText: log.length + ' hidden in total, ' + cfSessionHidden + ' this session' }
+                      subtitle: { simpleText: log.length + ' hidden in total, ' + cfSessionHidden + ' this session · ' + cfStatusLine() }
                     }
                   },
                   content: { overlayPanelItemListRenderer: { items: items, selectedIndex: 0 } }
@@ -964,13 +1046,14 @@ function cfOnKey(ev) {
 
 function cfStart() {
   if (window.__clearfeedTV) return;
-  window.__clearfeedTV = { version: CF_VERSION, log: cfReadLog, settings: function () { return cfSettings; } };
+  window.__clearfeedTV = { version: CF_VERSION, log: cfReadLog, settings: function () { return cfSettings; }, flush: function () { cfHubFlush(true); }, status: cfStatusLine };
 
   cfRebuildSettings();
   cfInstallParseHook();
   cfInstallFetchHook();
   cfInstallXhrHook();
   cfStartSettingsRefresh();
+  cfStartHubLog();
 
   try { document.addEventListener('keydown', cfOnKey, true); } catch (e) { }
 
