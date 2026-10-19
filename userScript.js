@@ -1,4 +1,4 @@
-/* ClearFeed TV v1.1.2 — built 2026-10-19T10:21:52.965Z */
+/* ClearFeed TV v1.2.0 — built 2026-10-19T10:31:23.982Z */
 (function () {
 'use strict';
 
@@ -16,7 +16,7 @@
 
 var CF_STORAGE_KEY = 'clearfeed-tv';
 var CF_LOG_KEY = 'clearfeed-tv-log';
-var CF_VERSION = '1.1.2';
+var CF_VERSION = '1.2.0';
 
 var CF_DEFAULTS = {
   // Where to fetch shared settings from. Leave empty to use local settings only.
@@ -124,32 +124,54 @@ function cfSetLocal(key, value) {
 // cross-origin POSTs don't need a preflight.
 var cfOrigXhr = window.XMLHttpRequest;
 var cfOrigFetch = window.fetch;
-function cfXhrJson(method, url, body, done) {
-  var finished = false;
-  function finish(data, status, how) { if (finished) return; finished = true; done(data, status, how); }
-  function viaFetch() {
-    if (typeof cfOrigFetch !== 'function') { finish(null, 0, 'xhr0'); return; }
-    try {
-      cfOrigFetch(url, { method: method, headers: body ? { 'Content-Type': 'text/plain' } : {}, body: body ? JSON.stringify(body) : undefined, mode: 'cors', credentials: 'omit' })
-        .then(function (r) { return r.text().then(function (t) { var d = null; try { d = cfOrigParse(t); } catch (e) { } finish(r.ok ? d : null, r.status, 'fetch'); }); })
-        .catch(function () { finish(null, 0, 'xhr0 fetch0'); });
-    } catch (e) { finish(null, 0, 'xhr0 fetchX'); }
-  }
+// The ClearFeed relay service (service.js) running inside TizenBrew on the TV.
+// On firmware where the YouTube page may not talk to outside addresses, every
+// request goes through it instead.
+var CF_RELAY = 'http://127.0.0.1:8766';
+var cfRelayWorks = null; // null = unknown, true/false once tried
+
+function cfRawXhr(method, url, body, done) {
   try {
     var xhr = new cfOrigXhr();
     xhr.open(method, url, true);
     if (body) xhr.setRequestHeader('Content-Type', 'text/plain');
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
-      if (xhr.status === 0) { viaFetch(); return; }
       var data = null;
       if (xhr.status >= 200 && xhr.status < 300) {
         try { data = cfOrigParse(xhr.responseText); } catch (e) { data = null; }
       }
-      finish(data, xhr.status, 'xhr');
+      done(data, xhr.status);
     };
     xhr.send(body ? JSON.stringify(body) : null);
-  } catch (e) { viaFetch(); }
+  } catch (e) { done(null, 0); }
+}
+
+function cfXhrJson(method, url, body, done) {
+  var finished = false;
+  function finish(data, status, how) { if (finished) return; finished = true; done(data, status, how); }
+  function viaRelay(prefix) {
+    if (url.indexOf('http://127.0.0.1') === 0 || cfRelayWorks === false) { finish(null, 0, prefix); return; }
+    cfRawXhr(method, CF_RELAY + '/relay?url=' + encodeURIComponent(url), body, function (d, st) {
+      if (st === 0) { cfRelayWorks = false; finish(null, 0, prefix + ' relay0'); return; }
+      cfRelayWorks = true;
+      finish(d, st, 'relay');
+    });
+  }
+  function viaFetch() {
+    if (typeof cfOrigFetch !== 'function') { viaRelay('xhr0'); return; }
+    try {
+      cfOrigFetch(url, { method: method, headers: body ? { 'Content-Type': 'text/plain' } : {}, body: body ? JSON.stringify(body) : undefined, mode: 'cors', credentials: 'omit' })
+        .then(function (r) { return r.text().then(function (t) { var d = null; try { d = cfOrigParse(t); } catch (e) { } finish(r.ok ? d : null, r.status, 'fetch'); }); })
+        .catch(function () { viaRelay('xhr0 fetch0'); });
+    } catch (e) { viaRelay('xhr0 fetchX'); }
+  }
+  // Once the relay is known to be the only way, go straight to it
+  if (cfRelayWorks === true && url.indexOf('http://127.0.0.1') !== 0) { viaRelay('direct-skipped'); return; }
+  cfRawXhr(method, url, body, function (data, status) {
+    if (status === 0) { viaFetch(); return; }
+    finish(data, status, 'xhr');
+  });
 }
 
 function cfHub() {
