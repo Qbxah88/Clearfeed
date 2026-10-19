@@ -1,4 +1,4 @@
-/* ClearFeed TV v1.5.0 — built 2026-10-19T15:00:30.252Z */
+/* ClearFeed TV v1.5.1 — built 2026-10-19T15:31:01.329Z */
 (function () {
 'use strict';
 
@@ -16,7 +16,7 @@
 
 var CF_STORAGE_KEY = 'clearfeed-tv';
 var CF_LOG_KEY = 'clearfeed-tv-log';
-var CF_VERSION = '1.5.0';
+var CF_VERSION = '1.5.1';
 
 var CF_DEFAULTS = {
   // Where to fetch shared settings from. Leave empty to use local settings only.
@@ -717,6 +717,7 @@ function cfStatusLine() {
   var hub = cfHub();
   if (hub) parts.push('hub: ' + (cfHubLastSend ? 'sent ' + Math.round((Date.now() - cfHubLastSend) / 60000) + ' min ago' : 'not sent yet'));
   else parts.push('no hub');
+  try { parts.push(cfBreakStatus()); } catch (e) { }
   parts.push('http gh ' + cfFetchStatus.gh + ' / cdn ' + cfFetchStatus.cdn + ' / proxy ' + cfFetchStatus.proxy + ' / same ' + cfFetchStatus.same + ' / hub ' + cfFetchStatus.hub + ' / post ' + cfFetchStatus.post);
   return parts.join(' · ');
 }
@@ -1496,7 +1497,7 @@ function cfBreakEnsureBar() {
   try {
     var wrap = document.createElement('div');
     wrap.id = 'cf-break-bar';
-    wrap.setAttribute('style', 'position:fixed;left:0;top:0;width:100%;height:10px;background:rgba(0,0,0,0.35);z-index:2147483000;pointer-events:none;');
+    wrap.setAttribute('style', 'position:fixed;left:4%;top:28px;width:92%;height:14px;border-radius:7px;overflow:hidden;background:rgba(0,0,0,0.55);box-shadow:0 0 0 2px rgba(0,0,0,0.35);z-index:2147483000;pointer-events:none;');
     var fill = document.createElement('div');
     fill.setAttribute('style', 'height:100%;width:100%;background:#3cc4b5;transition:width 1s linear, background 0.5s;');
     wrap.appendChild(fill);
@@ -1615,7 +1616,18 @@ function cfBreakTick() {
 
 function cfBreakStart() {
   try { document.addEventListener('keydown', cfBreakKeyGuard, true); } catch (e) { }
-  setInterval(cfBreakTick, 1000);
+  setInterval(function () { try { cfBreakTick(); } catch (e) { cfBreakLastError = String(e && e.message || e); } }, 1000);
+}
+var cfBreakLastError = '';
+function cfBreakStatus() {
+  var cfg = cfBreakCfg();
+  if (!cfg.enabled) return 'breaks off';
+  var s = cfBreakState();
+  var out = 'breaks ' + Math.floor(s.watched / 60) + '/' + cfg.watchMinutes + ' min';
+  if (cfg.dailyMinutes) out += ', today ' + Math.floor(s.today / 60) + '/' + cfg.dailyMinutes;
+  if (s.breakUntil > Date.now()) out += ', on break';
+  if (cfBreakLastError) out += ' (err: ' + cfBreakLastError + ')';
+  return out;
 }
 
 
