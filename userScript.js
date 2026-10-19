@@ -1,4 +1,4 @@
-/* ClearFeed TV v1.3.0 — built 2026-10-19T13:14:56.641Z */
+/* ClearFeed TV v1.5.0 — built 2026-10-19T15:00:30.252Z */
 (function () {
 'use strict';
 
@@ -16,7 +16,7 @@
 
 var CF_STORAGE_KEY = 'clearfeed-tv';
 var CF_LOG_KEY = 'clearfeed-tv-log';
-var CF_VERSION = '1.3.0';
+var CF_VERSION = '1.5.0';
 
 var CF_DEFAULTS = {
   // Where to fetch shared settings from. Leave empty to use local settings only.
@@ -64,6 +64,8 @@ var CF_DEFAULTS = {
   hub: { url: '', deviceKey: '', tvName: 'Samsung TV' },
 
   // Earn it: a First/Then board on the home screen (see 50-earn.js)
+  // Breaks: after N minutes of watching, a break of M minutes (see 60-break.js)
+  breaks: { enabled: false, watchMinutes: 30, breakMinutes: 10, warnMinutes: 2, dailyMinutes: 0, showBar: true, label: 'Break soon', breakLabel: 'Break time', doneLabel: 'All done for today' },
   earn: { enabled: false, learn: [], songs: [], videosPerSong: 1, songsPerDay: 3, carryOver: false, celebrate: true, onlyBoard: false, learnTitle: 'Learn', songsTitle: 'Songs' }
 };
 
@@ -102,6 +104,9 @@ function cfRebuildSettings() {
   var store = cfReadStore();
   var s = cfDeepMerge(CF_DEFAULTS, store.remote || {});
   s = cfDeepMerge(s, store.local || {});
+  // entries added from the remote (red/green buttons) sit on top of the shared lists
+  var add = store.localAdd || {};
+  for (var ak in add) if (Object.prototype.hasOwnProperty.call(add, ak) && Array.isArray(add[ak])) s[ak] = (Array.isArray(s[ak]) ? s[ak] : []).concat(add[ak]);
   cfSettings = s;
   cfCompileFilters();
   return s;
@@ -110,6 +115,16 @@ function cfRebuildSettings() {
 function cfGet(key) {
   if (!cfSettings) cfRebuildSettings();
   return cfSettings[key];
+}
+
+// Add one entry to a list on this TV only (red/green buttons)
+function cfAddLocal(key, value) {
+  var store = cfReadStore();
+  store.localAdd = store.localAdd || {};
+  var list = store.localAdd[key] = Array.isArray(store.localAdd[key]) ? store.localAdd[key] : [];
+  if (list.indexOf(value) === -1) list.push(value);
+  cfWriteStore(store);
+  cfRebuildSettings();
 }
 
 // Local override (e.g. from an on-TV action)
@@ -254,7 +269,7 @@ var cfHubLastSend = 0;
 
 function cfHubQueueEntry(entry) {
   if (cfHubQueue.length >= 200) return;
-  var kind = entry.reason === 'search' ? 'search' : entry.reason === 'creator' ? 'creator' : entry.reason === 'earn' ? 'earn' : 'hidden';
+  var kind = entry.reason === 'search' ? 'search' : entry.reason === 'creator' ? 'creator' : entry.reason === 'earn' ? 'earn' : entry.reason === 'break' ? 'break' : 'hidden';
   cfHubQueue.push({
     t: entry.t || Date.now(),
     kind: kind,
@@ -858,9 +873,11 @@ function cfFilterResponse(root) {
 }
 
 // Player response for a single video (watch page / autoplay / up-next)
+var cfNowPlaying = null; // { videoId, title, author, channelId } of the video last loaded
 function cfCheckPlayerResponse(r) {
   var vd = r.videoDetails;
   if (!vd || typeof vd !== 'object') return false;
+  cfNowPlaying = { videoId: vd.videoId || '', title: vd.title || '', author: vd.author || '', channelId: vd.channelId || '' };
   var names = [vd.author || '', vd.channelId || ''];
   if (typeof cfEarnLocked === 'function' && cfEarnLocked(vd.videoId, names)) {
     r.playabilityStatus = { status: 'ERROR', reason: cfEarnStars() + '  Learn first', errorScreen: { playerErrorMessageRenderer: { reason: { simpleText: 'Learn first' }, subreason: { simpleText: 'Finish a video from the Learn row to earn a song' } } } };
@@ -1426,25 +1443,226 @@ function cfEarnStart() {
 }
 
 
+// ===== 60-break.js =====
+// ---------------------------------------------------------------------------
+// ClearFeed TV: breaks — after N minutes of watching, a break of M minutes.
+//
+// Counts only while a video is actually playing. A slim bar at the top shows
+// the time left in the session (no numbers needed); near the end it turns
+// amber. When time is up the video is paused and a calm full-screen card
+// appears with a shrinking ring; nothing can be played until it has gone.
+// A daily total can also be set. State is kept on the TV so closing and
+// reopening the app does not reset the clock.
+//
+// Settings (key "breaks"): enabled, watchMinutes, breakMinutes, warnMinutes,
+//   dailyMinutes (0 = none), showBar, label, breakLabel, doneLabel
+// ---------------------------------------------------------------------------
+
+var CF_BREAK_KEY = 'clearfeed-break';
+var cfBreakOverlay = null;
+var cfBreakBar = null;
+var cfBreakWarned = false;
+var cfBreakLastTick = 0;
+
+function cfBreakCfg() {
+  var b = cfGet('breaks') || {};
+  return {
+    enabled: !!b.enabled,
+    watchMinutes: Math.max(1, Number(b.watchMinutes) || 30),
+    breakMinutes: Math.max(1, Number(b.breakMinutes) || 10),
+    warnMinutes: Math.max(0, Number(b.warnMinutes) || 2),
+    dailyMinutes: Math.max(0, Number(b.dailyMinutes) || 0),
+    showBar: b.showBar !== false,
+    label: b.label || 'Break soon',
+    breakLabel: b.breakLabel || 'Break time',
+    doneLabel: b.doneLabel || 'All done for today'
+  };
+}
+
+function cfBreakState() {
+  var s = {};
+  try { s = JSON.parse(window.localStorage.getItem(CF_BREAK_KEY) || '{}') || {}; } catch (e) { s = {}; }
+  if (s.day !== cfToday()) { s = { day: cfToday(), watched: 0, today: 0, breakUntil: 0 }; cfBreakSave(s); }
+  s.watched = Number(s.watched) || 0; s.today = Number(s.today) || 0; s.breakUntil = Number(s.breakUntil) || 0;
+  return s;
+}
+function cfBreakSave(s) { try { window.localStorage.setItem(CF_BREAK_KEY, JSON.stringify(s)); } catch (e) { } }
+
+function cfBreakVideo() { try { return document.querySelector('video'); } catch (e) { return null; } }
+
+// ---- the slim bar along the top -------------------------------------------
+function cfBreakEnsureBar() {
+  if (cfBreakBar && cfBreakBar.parentNode) return cfBreakBar;
+  try {
+    var wrap = document.createElement('div');
+    wrap.id = 'cf-break-bar';
+    wrap.setAttribute('style', 'position:fixed;left:0;top:0;width:100%;height:10px;background:rgba(0,0,0,0.35);z-index:2147483000;pointer-events:none;');
+    var fill = document.createElement('div');
+    fill.setAttribute('style', 'height:100%;width:100%;background:#3cc4b5;transition:width 1s linear, background 0.5s;');
+    wrap.appendChild(fill);
+    (document.body || document.documentElement).appendChild(wrap);
+    cfBreakBar = wrap;
+  } catch (e) { cfBreakBar = null; }
+  return cfBreakBar;
+}
+function cfBreakUpdateBar() {
+  var cfg = cfBreakCfg();
+  if (!cfg.enabled || !cfg.showBar) { if (cfBreakBar && cfBreakBar.parentNode) cfBreakBar.parentNode.removeChild(cfBreakBar); return; }
+  var bar = cfBreakEnsureBar(); if (!bar) return;
+  var s = cfBreakState();
+  var left = Math.max(0, cfg.watchMinutes * 60 - s.watched);
+  var frac = left / (cfg.watchMinutes * 60);
+  var fill = bar.firstChild;
+  fill.style.width = Math.round(frac * 100) + '%';
+  fill.style.background = left <= cfg.warnMinutes * 60 ? '#f0a33c' : '#3cc4b5';
+}
+
+// ---- the break card ---------------------------------------------------------
+function cfBreakShow(kind) {
+  var cfg = cfBreakCfg();
+  if (cfBreakOverlay && cfBreakOverlay.parentNode) { cfBreakOverlay.setAttribute('data-kind', kind); return; }
+  try {
+    var o = document.createElement('div');
+    o.id = 'cf-break';
+    o.setAttribute('data-kind', kind);
+    o.setAttribute('style', 'position:fixed;left:0;top:0;width:100%;height:100%;background:#15231f;color:#f3f5f2;z-index:2147483100;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Roboto,Arial,sans-serif;text-align:center;');
+    o.innerHTML =
+      '<div id="cf-break-ring" style="width:260px;height:260px;border-radius:50%;background:conic-gradient(#3cc4b5 0deg,#3cc4b5 360deg,#2a3734 360deg);display:flex;align-items:center;justify-content:center;margin-bottom:40px;">' +
+      '<div style="width:200px;height:200px;border-radius:50%;background:#15231f;display:flex;align-items:center;justify-content:center;font-size:96px;line-height:1;">' + (kind === 'done' ? '&#10003;' : '&#9208;') + '</div></div>' +
+      '<div id="cf-break-text" style="font-size:56px;font-weight:700;letter-spacing:1px;">' + (kind === 'done' ? cfg.doneLabel : cfg.breakLabel) + '</div>' +
+      '<div id="cf-break-sub" style="font-size:28px;color:#bfd8d5;margin-top:16px;"></div>';
+    (document.body || document.documentElement).appendChild(o);
+    cfBreakOverlay = o;
+  } catch (e) { cfBreakOverlay = null; }
+}
+function cfBreakHide() {
+  if (cfBreakOverlay && cfBreakOverlay.parentNode) cfBreakOverlay.parentNode.removeChild(cfBreakOverlay);
+  cfBreakOverlay = null;
+}
+function cfBreakUpdateRing() {
+  if (!cfBreakOverlay) return;
+  var s = cfBreakState(), cfg = cfBreakCfg();
+  var ring = cfBreakOverlay.querySelector('#cf-break-ring'), sub = cfBreakOverlay.querySelector('#cf-break-sub');
+  if (cfBreakOverlay.getAttribute('data-kind') === 'done') { if (sub) sub.textContent = ''; return; }
+  var left = Math.max(0, s.breakUntil - Date.now());
+  var frac = left / (cfg.breakMinutes * 60000);
+  var deg = Math.round(frac * 360);
+  if (ring) ring.style.background = 'conic-gradient(#3cc4b5 0deg,#3cc4b5 ' + deg + 'deg,#2a3734 ' + deg + 'deg)';
+  if (sub) sub.textContent = Math.ceil(left / 60000) + ' min';
+}
+
+function cfBreakActive() {
+  var s = cfBreakState(), cfg = cfBreakCfg();
+  if (!cfg.enabled) return '';
+  if (cfg.dailyMinutes && s.today >= cfg.dailyMinutes * 60) return 'done';
+  if (s.breakUntil > Date.now()) return 'break';
+  return '';
+}
+
+// Swallow the remote during a break so the card cannot be dismissed
+function cfBreakKeyGuard(ev) {
+  if (!cfBreakActive()) return true;
+  if (ev && (ev.keyCode === 406 || ev.key === 'ColorF3Blue')) return true; // the log still opens
+  try { ev.preventDefault(); ev.stopImmediatePropagation(); ev.stopPropagation(); } catch (e) { }
+  return false;
+}
+
+// ---- once a second ------------------------------------------------------------
+function cfBreakTick() {
+  var cfg = cfBreakCfg();
+  if (!cfg.enabled) { cfBreakHide(); cfBreakUpdateBar(); return; }
+  var s = cfBreakState();
+  var v = cfBreakVideo();
+  var active = cfBreakActive();
+  if (active) {
+    cfBreakShow(active);
+    cfBreakUpdateRing();
+    if (v && !v.paused) { try { v.pause(); } catch (e) { } }
+    return;
+  }
+  if (cfBreakOverlay) { // a break just ended
+    cfBreakHide();
+    cfBreakWarned = false;
+    if (cfg.enabled) cfToast('▶ ' + 'Ready', 'You can watch again');
+  }
+  var playing = !!(v && !v.paused && v.duration > 0 && !v.ended);
+  if (playing) {
+    s.watched += 1; s.today += 1;
+    var left = cfg.watchMinutes * 60 - s.watched;
+    if (!cfBreakWarned && cfg.warnMinutes && left <= cfg.warnMinutes * 60 && left > 0) {
+      cfBreakWarned = true;
+      cfToast('⏳ ' + cfg.label, Math.ceil(left / 60) + ' min');
+    }
+    if (left <= 0) {
+      s.watched = 0; s.breakUntil = Date.now() + cfg.breakMinutes * 60000; cfBreakWarned = false;
+      cfBreakSave(s);
+      try { v.pause(); } catch (e) { }
+      cfLog({ reason: 'break', detail: cfg.breakMinutes + ' min', title: 'Break after ' + cfg.watchMinutes + ' min of watching' });
+      cfBreakShow('break'); cfBreakUpdateRing(); cfBreakUpdateBar();
+      return;
+    }
+    if (cfg.dailyMinutes && s.today >= cfg.dailyMinutes * 60) {
+      cfBreakSave(s);
+      try { v.pause(); } catch (e) { }
+      cfLog({ reason: 'break', detail: 'daily limit', title: 'Daily limit reached: ' + cfg.dailyMinutes + ' min' });
+      cfBreakShow('done');
+      return;
+    }
+    cfBreakSave(s);
+  }
+  cfBreakUpdateBar();
+}
+
+function cfBreakStart() {
+  try { document.addEventListener('keydown', cfBreakKeyGuard, true); } catch (e) { }
+  setInterval(cfBreakTick, 1000);
+}
+
+
 // ===== 90-main.js =====
 // ---------------------------------------------------------------------------
 // ClearFeed TV: start-up
 // ---------------------------------------------------------------------------
 
-function cfOnKey(ev) {
-  // Blue button on Samsung remotes (keyCode 406) opens the hidden-items log
-  if (ev && (ev.keyCode === 406 || ev.key === 'ColorF3Blue')) {
-    ev.preventDefault();
-    ev.stopPropagation();
-    cfShowLogModal();
-    return false;
+// Block the channel or video that is playing, from the remote
+function cfBlockNowPlaying(what) {
+  var np = cfNowPlaying;
+  if (!np || !np.videoId) { cfToast('ClearFeed', 'Play a video first, then press ' + (what === 'creator' ? 'red' : 'green')); return; }
+  if (what === 'creator') {
+    var who = np.channelId || np.author;
+    if (!who) { cfToast('ClearFeed', 'Could not tell which channel this is'); return; }
+    cfAddLocal('blockedCreators', who);
+    if (np.author && np.author !== who) cfAddLocal('blockedCreators', np.author);
+    cfLog({ reason: 'creator', detail: np.author || who, title: 'Blocked from TV: ' + (np.author || who), videoId: np.videoId, creator: who, fromTv: true });
+    cfModal('ClearFeed', 'Channel blocked', (np.author || who) + ' will not show on this TV. Add it in the manager to block it everywhere.');
+  } else {
+    cfAddLocal('blockedVideos', np.videoId);
+    cfLog({ reason: 'video', detail: np.videoId, title: 'Blocked from TV: ' + (np.title || np.videoId), videoId: np.videoId, creator: np.channelId || '' });
+    cfModal('ClearFeed', 'Video blocked', (np.title || np.videoId) + ' will not play again on this TV.');
   }
-  return true;
+  try { var v = document.querySelector('video'); if (v) v.pause(); } catch (e) { }
+  setTimeout(cfSoftReload, 2500);
+}
+
+function cfOnKey(ev) {
+  if (!ev) return true;
+  // Blue (406) opens the hidden-items log; red (403) blocks the playing channel; green (404) blocks the playing video
+  var code = ev.keyCode, key = ev.key;
+  var isBlue = code === 406 || key === 'ColorF3Blue';
+  var isRed = code === 403 || key === 'ColorF0Red';
+  var isGreen = code === 404 || key === 'ColorF1Green';
+  if (!isBlue && !isRed && !isGreen) return true;
+  ev.preventDefault();
+  ev.stopPropagation();
+  if (isBlue) cfShowLogModal();
+  else if (isRed) cfBlockNowPlaying('creator');
+  else cfBlockNowPlaying('video');
+  return false;
 }
 
 function cfStart() {
   if (window.__clearfeedTV) return;
-  window.__clearfeedTV = { version: CF_VERSION, log: cfReadLog, settings: function () { return cfSettings; }, flush: function () { cfHubFlush(true); }, status: cfStatusLine, earn: { state: cfEarnState, feeds: function () { return cfEarnFeeds; }, tick: cfEarnTick, refresh: function () { cfEarnRefreshFeeds(true); } } };
+  window.__clearfeedTV = { version: CF_VERSION, log: cfReadLog, settings: function () { return cfSettings; }, flush: function () { cfHubFlush(true); }, status: cfStatusLine, breaks: { state: cfBreakState, tick: cfBreakTick }, earn: { state: cfEarnState, feeds: function () { return cfEarnFeeds; }, tick: cfEarnTick, refresh: function () { cfEarnRefreshFeeds(true); } } };
 
   cfRebuildSettings();
   cfInstallParseHook();
@@ -1453,6 +1671,7 @@ function cfStart() {
   cfStartSettingsRefresh();
   cfStartHubLog();
   cfEarnStart();
+  cfBreakStart();
 
   try { document.addEventListener('keydown', cfOnKey, true); } catch (e) { }
 
@@ -1465,7 +1684,7 @@ function cfStart() {
       clearInterval(timer);
       setTimeout(function () {
         cfSoftReload();
-        cfToast('ClearFeed is on', 'Blue button shows what was hidden');
+        cfToast('ClearFeed is on', 'Blue = log · Red = block channel · Green = block video');
       }, 1500);
     } else if (tries > 300) {
       clearInterval(timer);
