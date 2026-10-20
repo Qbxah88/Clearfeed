@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.ClearFeed" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/cf_teal</item>
+        <item name="colorPrimaryDark">@color/cf_dark</item>
+        <item name="colorAccent">@color/cf_teal</item>
+        <item name="android:windowBackground">@color/cf_bg</item>
+        <item name="android:statusBarColor">@color/cf_dark</item>
+    </style>
+</resources>

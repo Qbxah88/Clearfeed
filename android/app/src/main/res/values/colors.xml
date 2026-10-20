@@ -1,0 +1,10 @@
+<resources>
+    <color name="cf_teal">#3CC4B5</color>
+    <color name="cf_dark">#15231F</color>
+    <color name="cf_dark_card">#1E322C</color>
+    <color name="cf_bg">#0E1715</color>
+    <color name="cf_text">#EAF5F2</color>
+    <color name="cf_text_dim">#9FB8B1</color>
+    <color name="cf_danger">#E06C5A</color>
+    <color name="cf_white">#FFFFFF</color>
+</resources>

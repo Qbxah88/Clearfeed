@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/cf_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ClearFeed"
+            android:textColor="@color/cf_teal"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:layout_marginTop="24dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Connect to your hub"
+            android:textColor="@color/cf_text_dim"
+            android:textSize="15sp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Hub URL"
+            android:textColor="@color/cf_text_dim"
+            android:textSize="13sp" />
+
+        <EditText
+            android:id="@+id/inputUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://clearfeed-hub.awadh7us.workers.dev"
+            android:textColor="@color/cf_text"
+            android:textColorHint="@color/cf_text_dim"
+            android:inputType="textUri"
+            android:autofillHints="" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Admin key"
+            android:textColor="@color/cf_text_dim"
+            android:textSize="13sp"
+            android:layout_marginTop="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Use the admin key, not the device key, so this app can edit settings and the block list."
+            android:textColor="@color/cf_text_dim"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/inputKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="admin-..."
+            android:textColor="@color/cf_text"
+            android:textColorHint="@color/cf_text_dim"
+            android:inputType="textPassword"
+            android:autofillHints="" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Device name"
+            android:textColor="@color/cf_text_dim"
+            android:textSize="13sp"
+            android:layout_marginTop="16dp" />
+
+        <EditText
+            android:id="@+id/inputDeviceName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Phone"
+            android:text="Phone"
+            android:textColor="@color/cf_text"
+            android:textColorHint="@color/cf_text_dim"
+            android:inputType="text"
+            android:autofillHints="" />
+
+        <TextView
+            android:id="@+id/setupError"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/cf_danger"
+            android:textSize="13sp"
+            android:layout_marginTop="12dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnConnect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:backgroundTint="@color/cf_teal"
+            android:textColor="@color/cf_dark"
+            android:text="Connect" />
+
+    </LinearLayout>
+</ScrollView>
